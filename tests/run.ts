@@ -11,10 +11,12 @@ import { AnyOutputFile, AssetFormat, AssetScale, OutputFileType, RenderedAsset }
 import { ExporterConfiguration } from "../config"
 import {
   RASTER_SCALES,
+  familyMembers,
   generateAssetCatalogue,
+  groupAssetFamilies,
   hasVectorRepresentation,
   normalizeConfiguration,
-  partitionVectorRenders,
+  routeFamilies,
 } from "../src/generator"
 import { Fixture, makeFixture } from "./fixtures"
 import configOptions from "../config.json"
@@ -113,23 +115,30 @@ function assertInvariants(scenario: string, files: Array<AnyOutputFile>): void {
   }
 }
 
+/** Mirrors the assetId -> group key map that index.ts builds from asset groups. */
+function groupKeys(fixtures: Array<Fixture>): Map<string, string> {
+  return new Map(fixtures.map((fixture) => [fixture.asset.id, fixture.groupKey]))
+}
+
 /** Mirrors the index.ts orchestration for a fixture set, without the SDK. */
 function generate(
   fixtures: Array<Fixture>,
   config: ExporterConfiguration,
   options: { missingScales?: Map<string, Array<AssetScale>> } = {}
 ): Array<AnyOutputFile> {
-  const vectorCapable = fixtures.filter((fixture) => hasVectorRepresentation(fixture.asset))
-  const bitmapOnly = fixtures.filter((fixture) => !hasVectorRepresentation(fixture.asset))
+  const fixtureById = new Map(fixtures.map((fixture) => [fixture.asset.id, fixture]))
+  const families = groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
 
-  const svgRenders = vectorCapable.map((fixture) => fixture.render(AssetFormat.svg, AssetScale.x1))
-  const { vectorRenders, forcedRasterIds } = partitionVectorRenders(svgRenders, config)
+  const vectorCandidates = families
+    .filter((family) => familyMembers(family).every((member) => hasVectorRepresentation(member)))
+    .flatMap((family) => familyMembers(family))
+  const svgRenders = vectorCandidates.map((asset) => fixtureById.get(asset.id)!.render(AssetFormat.svg, AssetScale.x1))
 
-  const rasterFixtures = [...bitmapOnly, ...vectorCapable.filter((fixture) => forcedRasterIds.has(fixture.asset.id))]
+  const { vectorRenders, rasterAssets } = routeFamilies(families, svgRenders, config)
   const rasterRendersByScale = RASTER_SCALES.map((scale) =>
-    rasterFixtures
-      .filter((fixture) => !(options.missingScales?.get(fixture.asset.id) ?? []).includes(scale))
-      .map((fixture) => fixture.render(AssetFormat.png, scale))
+    rasterAssets
+      .filter((asset) => !(options.missingScales?.get(asset.id) ?? []).includes(scale))
+      .map((asset) => fixtureById.get(asset.id)!.render(AssetFormat.png, scale))
   )
 
   return generateAssetCatalogue({ vectorRenders, rasterRendersByScale }, config)
@@ -310,5 +319,227 @@ function makeStandardFixtures(): Array<Fixture> {
   writeFiles(path.join(outputRoot, scenario), files)
   console.log(`${scenario}: ${files.length} files`)
 }
+
+// --- Scenario 7: localized asset families -----------------------------------------
+{
+  const scenario = "localized"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr", "de"] })
+  const fixtures = [
+    // all-SVG family -> one localized vector imageset
+    makeFixture({ name: "onboarding-hero", group: ["Icons", "App"], svgUrl: "https://cdn.example.com/hero.svg" }),
+    makeFixture({ name: "onboarding-hero-tr", group: ["Icons", "App"], svgUrl: "https://cdn.example.com/hero-tr.svg" }),
+    makeFixture({ name: "onboarding-hero-de", group: ["Icons", "App"], svgUrl: "https://cdn.example.com/hero-de.svg" }),
+    // all-SVG family under a forced-raster group -> one localized PNG imageset
+    makeFixture({ name: "app-icon", group: ["Images"], svgUrl: "https://cdn.example.com/app-icon.svg" }),
+    makeFixture({ name: "app-icon-tr", group: ["Images"], svgUrl: "https://cdn.example.com/app-icon-tr.svg" }),
+    // mixed family (variant has no SVG) -> the WHOLE family becomes raster
+    makeFixture({ name: "map", group: ["Illustrations"], svgUrl: "https://cdn.example.com/map.svg" }),
+    makeFixture({ name: "map-tr", group: ["Illustrations"] }),
+  ]
+  const files = generate(fixtures, config)
+  assertInvariants(scenario, files)
+
+  const hero = contentsOf(files, "Assets.xcassets/Icons/App/onboarding-hero.imageset")
+  const heroImages = hero.images as Array<{ filename: string; locale?: string }>
+  if (
+    heroImages.length !== 3 ||
+    heroImages[0].filename !== "onboarding-hero.svg" ||
+    heroImages[0].locale !== undefined ||
+    heroImages[1].locale !== "de" ||
+    heroImages[2].locale !== "tr"
+  ) {
+    fail(scenario, `unexpected localized vector entries: ${JSON.stringify(heroImages)}`)
+  }
+  if (files.some((file) => file.path.includes("onboarding-hero-tr.imageset") || file.path.includes("onboarding-hero-de.imageset"))) {
+    fail(scenario, "localized variants must not get their own imagesets")
+  }
+
+  const appIcon = contentsOf(files, "Assets.xcassets/Images/app-icon.imageset")
+  const appIconLocales = appIcon.images.filter((image) => (image as { locale?: string }).locale === "tr")
+  if (appIcon.images.length !== 6 || appIconLocales.length !== 3 || appIcon.images.some((image) => !image.filename.endsWith(".png"))) {
+    fail(scenario, `expected app-icon as base+tr PNG scales, got ${JSON.stringify(appIcon.images)}`)
+  }
+
+  const map = contentsOf(files, "Assets.xcassets/Illustrations/map.imageset")
+  if (map.images.length !== 6 || map.images.some((image) => !image.filename.endsWith(".png"))) {
+    fail(scenario, `mixed family must fall back to raster entirely, got ${JSON.stringify(map.images)}`)
+  }
+  if (files.some((file) => file.path.includes("app-icon-tr.imageset") || file.path.includes("map-tr.imageset"))) {
+    fail(scenario, "raster localized variants must not get their own imagesets either")
+  }
+
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
+// --- Scenario 9: same-named bases in different folders stay independent ----------
+{
+  const scenario = "localized-per-folder"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+  const files = generate(
+    [
+      makeFixture({ name: "hero", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "hero-tr", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "hero", group: ["Marketing"], svgUrl: "https://x/c.svg", duplicates: 1 }),
+      makeFixture({ name: "hero-tr", group: ["Marketing"], svgUrl: "https://x/d.svg", duplicates: 1 }),
+    ],
+    config
+  )
+  assertInvariants(scenario, files)
+  for (const directory of ["Assets.xcassets/Icons/hero.imageset", "Assets.xcassets/Marketing/hero-1.imageset"]) {
+    const contents = contentsOf(files, directory)
+    if (contents.images.length !== 2 || (contents.images[1] as { locale?: string }).locale !== "tr") {
+      fail(scenario, `${directory} must hold exactly its own folder's tr variant, got ${JSON.stringify(contents.images)}`)
+    }
+  }
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
+// --- Scenario 10: case-insensitive suffixes, canonical locale codes ---------------
+{
+  const scenario = "locale-case"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["TR", "pt-br"] })
+  if (config.assetLocales.join(",") !== "pt-BR,tr") {
+    fail(scenario, `expected canonical, longest-first locales [pt-BR, tr], got ${JSON.stringify(config.assetLocales)}`)
+  }
+  const files = generate(
+    [
+      makeFixture({ name: "hero", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "hero-TR", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "hero-pt-BR", group: ["Icons"], svgUrl: "https://x/c.svg" }),
+    ],
+    config
+  )
+  assertInvariants(scenario, files)
+  const hero = contentsOf(files, "Assets.xcassets/Icons/hero.imageset")
+  const locales = hero.images.map((image) => (image as { locale?: string }).locale)
+  if (locales.join(",") !== ",pt-BR,tr") {
+    fail(scenario, `expected canonical locales [base, pt-BR, tr] (case-insensitive fold, longest-first parse), got ${JSON.stringify(locales)}`)
+  }
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
+// --- Scenario 8: custom separator --------------------------------------------------
+{
+  const scenario = "locale-separator"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"], localeSuffixSeparator: "_" })
+  const files = generate(
+    [
+      makeFixture({ name: "promo", group: ["Icons"], svgUrl: "https://cdn.example.com/promo.svg" }),
+      makeFixture({ name: "promo_tr", group: ["Icons"], svgUrl: "https://cdn.example.com/promo-tr.svg" }),
+    ],
+    config
+  )
+  assertInvariants(scenario, files)
+  const promo = contentsOf(files, "Assets.xcassets/Icons/promo.imageset")
+  if (promo.images.length !== 2 || (promo.images[1] as { locale?: string }).locale !== "tr") {
+    fail(scenario, `expected promo with tr variant via "_" separator, got ${JSON.stringify(promo.images)}`)
+  }
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
+// --- Error cases: misconfiguration must fail loudly, before any rendering ---------
+function expectThrow(label: string, run: () => void, messageFragment: string): void {
+  try {
+    run()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!message.includes(messageFragment)) {
+      throw new Error(`[${label}] error message "${message}" does not mention "${messageFragment}"`)
+    }
+    console.log(`${label}: rejected as expected`)
+    return
+  }
+  throw new Error(`[${label}] expected an error but none was thrown`)
+}
+
+expectThrow(
+  "orphan-variant",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    const fixtures = [makeFixture({ name: "banner-tr", group: ["Icons"], svgUrl: "https://x/y.svg" })]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  "has no base asset"
+)
+
+expectThrow(
+  "base-in-other-folder",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    const fixtures = [
+      makeFixture({ name: "promo", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "promo", group: ["Illustrations"], svgUrl: "https://x/b.svg", duplicates: 1 }),
+      makeFixture({ name: "promo-tr", group: ["Marketing"], svgUrl: "https://x/c.svg" }),
+    ]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  "in its folder"
+)
+
+expectThrow(
+  "ambiguous-base-no-groups",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    groupAssetFamilies(
+      [
+        makeFixture({ name: "promo", group: ["Icons"], svgUrl: "https://x/a.svg" }).asset,
+        makeFixture({ name: "promo", group: ["Illustrations"], svgUrl: "https://x/b.svg", duplicates: 1 }).asset,
+        makeFixture({ name: "promo-tr", group: ["Icons"], svgUrl: "https://x/c.svg" }).asset,
+      ],
+      config
+    )
+  },
+  "rename them to disambiguate"
+)
+
+expectThrow(
+  "duplicate-locale",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    const fixtures = [
+      makeFixture({ name: "promo", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "promo-tr", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "promo-tr", group: ["Icons"], svgUrl: "https://x/c.svg", duplicates: 1 }),
+    ]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  "duplicate"
+)
+
+expectThrow(
+  "invalid-locale",
+  () => normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr", "türkçe!"] }),
+  "Invalid locale codes"
+)
+
+expectThrow(
+  "render-time-orphan-vector",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    const variant = makeFixture({ name: "ghost-tr", group: ["Icons"], svgUrl: "https://x/y.svg" })
+    generateAssetCatalogue(
+      { vectorRenders: [variant.render(AssetFormat.svg, AssetScale.x1)], rasterRendersByScale: [[], [], []] },
+      config
+    )
+  },
+  "without a usable base"
+)
+
+expectThrow(
+  "render-time-orphan-raster",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"] })
+    const variant = makeFixture({ name: "ghost-tr", group: ["Images"] })
+    generateAssetCatalogue(
+      { vectorRenders: [], rasterRendersByScale: [[variant.render(AssetFormat.png, AssetScale.x1)], [], []] },
+      config
+    )
+  },
+  "without a usable base"
+)
 
 console.log("all scenarios generated")

@@ -1,6 +1,14 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.3.0
+
+### 🚀 New
+
+- Localized imagesets: new `assetLocales` option (default off) folds `<base><separator><locale>`-named assets (e.g. `hero-tr`) into their base asset's imageset as per-locale entries, using Xcode's native asset localization. One `Image(.hero)` symbol serves every language. Configurable `localeSuffixSeparator` (default `-`).
+- Localization guard rails: orphan variants (no base asset), ambiguous bases, duplicate locales and invalid locale codes fail the export with actionable messages, before any rendering happens. A family is exported as SVG only when every member has a vector representation; otherwise the whole family becomes PNG so an imageset never mixes formats.
+- Variant pairing is folder-aware: same-named bases in different folders stay independent, and a variant must live next to its base. Suffix matching is case-insensitive (`hero-TR` folds under `tr`), locale codes are canonicalized to BCP-47 casing and matched longest-first (`pt-BR` wins over an overlapping `BR`), and the suffix separator is used verbatim (spaces allowed; empty falls back to `-`).
+
 ## 2.2.1
 
 ### 🛠 Fixed

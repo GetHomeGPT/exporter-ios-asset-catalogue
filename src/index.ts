@@ -10,10 +10,12 @@ import {
 import { ExporterConfiguration } from "../config"
 import {
   RASTER_SCALES,
+  familyMembers,
   generateAssetCatalogue,
+  groupAssetFamilies,
   hasVectorRepresentation,
   normalizeConfiguration,
-  partitionVectorRenders,
+  routeFamilies,
 } from "./generator"
 import configOptions from "../config.json"
 
@@ -65,20 +67,35 @@ Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyO
     assetGroups = assetGroups.filter((group) => group.brandId === brand.id)
   }
 
-  // Route each asset to the representation that fits it best. Assets under a
+  // Group assets into families (a base plus its localized variants, when
+  // assetLocales is configured) — naming problems fail here, before any rendering.
+  // The group map lets variants pair with the base in their own folder, so
+  // same-named bases in different folders stay independent.
+  const groupKeyByAssetId = new Map<string, string>()
+  for (const group of assetGroups) {
+    const key = [...group.path, group.name].filter((segment) => segment && segment.length > 0).join("/")
+    for (const assetId of group.assetIds ?? []) {
+      groupKeyByAssetId.set(assetId, key)
+    }
+  }
+  const families = groupAssetFamilies(assets, config, groupKeyByAssetId)
+
+  // Route each family to the representation that fits it best. A family is only a
+  // vector candidate when every member has an SVG representation, so a base and
+  // its localized variants always share one imageset format. Assets under a
   // configured raster path (e.g. "Images") are photos / app artwork whose Figma
   // export settings are 1x/2x/3x PNG - Supernova may still hold an SVG wrapper
-  // for them, so they are re-routed after the SVG render resolves their group.
-  const vectorCapableAssets = assets.filter((asset) => hasVectorRepresentation(asset))
-  const bitmapOnlyAssets = assets.filter((asset) => !hasVectorRepresentation(asset))
+  // for them, so families are re-routed after the SVG render resolves their groups.
+  const vectorCandidateAssets = families
+    .filter((family) => familyMembers(family).every((member) => hasVectorRepresentation(member)))
+    .flatMap((family) => familyMembers(family))
 
   const svgRenders =
-    vectorCapableAssets.length > 0
-      ? await sdk.assets.getRenderedAssets(remoteVersionIdentifier, vectorCapableAssets, assetGroups, AssetFormat.svg, AssetScale.x1)
+    vectorCandidateAssets.length > 0
+      ? await sdk.assets.getRenderedAssets(remoteVersionIdentifier, vectorCandidateAssets, assetGroups, AssetFormat.svg, AssetScale.x1)
       : []
-  const { vectorRenders, forcedRasterIds } = partitionVectorRenders(svgRenders, config)
+  const { vectorRenders, rasterAssets } = routeFamilies(families, svgRenders, config)
 
-  const rasterAssets = [...bitmapOnlyAssets, ...vectorCapableAssets.filter((asset) => forcedRasterIds.has(asset.id))]
   const rasterRendersByScale =
     rasterAssets.length > 0
       ? await Promise.all(

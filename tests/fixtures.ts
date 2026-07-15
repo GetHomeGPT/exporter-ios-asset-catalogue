@@ -23,6 +23,8 @@ export type FixtureSpec = {
 
 export type Fixture = {
   asset: Asset
+  /** Slash-joined group path, e.g. "Icons/App" — mirrors what index.ts derives from asset groups. */
+  groupKey: string
   /** One RenderedAsset per requested format/scale. */
   render: (format: AssetFormat, scale: AssetScale) => RenderedAsset
 }
@@ -47,6 +49,7 @@ export function makeFixture(spec: FixtureSpec): Fixture {
 
   return {
     asset,
+    groupKey: spec.group.filter((segment) => segment.length > 0).join("/"),
     render: (format: AssetFormat, scale: AssetScale): RenderedAsset =>
       ({
         assetId,

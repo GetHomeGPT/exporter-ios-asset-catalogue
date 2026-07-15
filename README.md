@@ -42,10 +42,36 @@ Because Supernova can produce an SVG wrapper even for true images (photos, app a
 | `templateRenderingForVectors` | `true` | Vector imagesets are template-rendered (adopt tint color). When off, the intent is written explicitly as `original`. |
 | `preserveVectorData` | `true` | Vector data is embedded so images scale at runtime. When off, Xcode rasterizes SVGs to @1x/@2x/@3x PNGs at build time (smaller bundle). |
 | `providesNamespace` | `false` | Group folders provide a namespace: lookups become `"Icons/app-icon"`, symbols become `ImageResource.Icons.appIcon`. |
+| `assetLocales` | `[]` | Locale codes (BCP-47) that produce localized imagesets from `<base><sep><locale>`-named assets. Empty = off. |
+| `localeSuffixSeparator` | `-` | Separator between base name and locale suffix (`hero-tr`). |
 | `ignoredAssetPaths` | `[]` | Excludes matching groups (and their subgroups) from the export. |
 | `rasterAssetPaths` | `["Images"]` | Forces matching groups to PNG @1x/@2x/@3x even when an SVG representation exists. |
 
 The catalog root and every group folder receive a `Contents.json`, exactly as Xcode writes them.
+
+### Localized assets
+
+For artwork with baked-in text, set `assetLocales` (e.g. `["tr", "de"]`) and maintain per-language sibling components **in the same Figma frame / Supernova folder**, named with the locale suffix:
+
+```
+Illustrations/
+  onboarding-hero        <- base (fallback for every other language)
+  onboarding-hero-tr
+  onboarding-hero-de
+```
+
+The exporter folds the variants into **one imageset** using Xcode's native asset localization (per-image `locale` entries in Contents.json). Code keeps using the single `Image(.onboardingHero)` symbol — iOS picks the right file from the app's language at runtime.
+
+Rules and gotchas:
+
+- Every variant **requires a base asset**; orphan variants fail the export with a list of offending names.
+- A family is exported as SVG only when the base **and** all variants have vector representations; otherwise the whole family falls back to PNG @1x/@2x/@3x so one imageset never mixes formats.
+- Each variant component in Figma must have export settings, and the library must be **republished** after changes — otherwise Supernova silently omits the asset.
+- The Xcode **project must declare the languages** (Project > Info > Localizations): a `tr` variant can never be selected while the app only declares English. Variant selection follows the app's language, not the device region.
+- Test with the scheme's *App Language* setting — SwiftUI's `.environment(\.locale)` does **not** switch asset variants.
+- Prefer keeping text out of images entirely (overlay a localized `Text`) when the artwork allows it; localize only what genuinely bakes text in.
+- **Configured suffixes are reserved.** With `assetLocales: ["id"]`, an unrelated asset named `user-id` would be folded into `user.imageset` as an Indonesian variant. Pick locale codes you actually ship and avoid asset names ending in `<separator><locale>` that are not variants.
+- Suffix matching is case-insensitive (`hero-TR` folds under `tr`) and locale codes are canonicalized to BCP-47 casing (`TR` → `tr`, `pt-br` → `pt-BR`). The separator is used verbatim (a space works for `hero tr` naming); an empty value falls back to `-`.
 
 ### Asset naming
 

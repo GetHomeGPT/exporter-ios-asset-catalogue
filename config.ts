@@ -30,6 +30,22 @@ export type ExporterConfiguration = {
    */
   providesNamespace: boolean
   /**
+   * Locale codes (BCP-47, e.g. `tr`, `de`, `pt-BR`) that produce localized imagesets.
+   * When non-empty, an asset named `<base><separator><locale>` (e.g. `hero-tr`) is
+   * folded into the `<base>` asset's imageset as a localized variant — Xcode then
+   * serves the right file per app language, while code keeps using the single
+   * `Image(.hero)` symbol. Every variant requires a base asset in the same folder;
+   * the export fails loudly on orphan variants. The app's Xcode project must declare
+   * these languages (Project > Info > Localizations) or the variants are never
+   * selected at runtime. Empty (default) disables the feature entirely.
+   */
+  assetLocales: Array<string>
+  /**
+   * Separator between the base asset name and the locale suffix (`hero-tr` with `-`,
+   * `hero_tr` with `_`). Only used when `assetLocales` is non-empty.
+   */
+  localeSuffixSeparator: string
+  /**
    * Asset paths to exclude from the export. If you include partial path fragments,
    * all matching paths are ignored (e.g. `deprecated` ignores everything under a
    * `deprecated/` group and its subgroups).
