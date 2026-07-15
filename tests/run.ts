@@ -224,6 +224,9 @@ function makeStandardFixtures(): Array<Fixture> {
   if (burger.properties?.["template-rendering-intent"] !== "template" || burger.properties?.["preserves-vector-representation"] !== true) {
     fail(scenario, `unexpected vector properties: ${JSON.stringify(burger.properties)}`)
   }
+  if ("localizable" in (burger.properties ?? {})) {
+    fail(scenario, "non-localized imagesets must not carry localizable")
+  }
   contentsOf(files, "Assets.xcassets/Icons/App/user profile-1.imageset")
   // plain (non-namespacing) group folders still get an info-only Contents.json.
   const group = contentsOf(files, "Assets.xcassets/Icons")
@@ -353,11 +356,19 @@ function makeStandardFixtures(): Array<Fixture> {
   if (files.some((file) => file.path.includes("onboarding-hero-tr.imageset") || file.path.includes("onboarding-hero-de.imageset"))) {
     fail(scenario, "localized variants must not get their own imagesets")
   }
+  // Xcode marks localized assets with "localizable": true - required by the editor
+  // UI and the Export Localizations workflow.
+  if (hero.properties?.["localizable"] !== true) {
+    fail(scenario, `localized vector imageset must carry localizable=true, got ${JSON.stringify(hero.properties)}`)
+  }
 
   const appIcon = contentsOf(files, "Assets.xcassets/Images/app-icon.imageset")
   const appIconLocales = appIcon.images.filter((image) => (image as { locale?: string }).locale === "tr")
   if (appIcon.images.length !== 6 || appIconLocales.length !== 3 || appIcon.images.some((image) => !image.filename.endsWith(".png"))) {
     fail(scenario, `expected app-icon as base+tr PNG scales, got ${JSON.stringify(appIcon.images)}`)
+  }
+  if (appIcon.properties?.["localizable"] !== true) {
+    fail(scenario, `localized raster imageset must carry localizable=true, got ${JSON.stringify(appIcon.properties)}`)
   }
 
   const map = contentsOf(files, "Assets.xcassets/Illustrations/map.imageset")

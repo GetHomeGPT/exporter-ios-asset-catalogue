@@ -37,12 +37,18 @@ export function vectorContentsJson(
   preserveVectorData: boolean,
   localized: Array<LocalizedVector> = []
 ): string {
-  const properties: Record<string, unknown> = {
-    "template-rendering-intent": templateRendering ? "template" : "original",
+  // Key order mirrors Xcode's own (alphabetical) writer. "localizable" is what
+  // marks the asset as localized for the Xcode editor UI and the Export
+  // Localizations (.xcloc) workflow — the per-image locale entries alone are
+  // enough for actool, but not for those flows.
+  const properties: Record<string, unknown> = {}
+  if (localized.length > 0) {
+    properties["localizable"] = true
   }
   if (preserveVectorData) {
     properties["preserves-vector-representation"] = true
   }
+  properties["template-rendering-intent"] = templateRendering ? "template" : "original"
   const contents = {
     images: [
       {
@@ -69,7 +75,7 @@ export function vectorContentsJson(
  */
 export function rasterContentsJson(asset: RenderedAsset, scales: Array<AssetScale>, localized: Array<LocalizedRaster> = []): string {
   const name = assetName(asset)
-  const contents = {
+  const contents: Record<string, unknown> = {
     images: [
       ...scales.map((scale) => ({
         filename: `${name}${scaleSuffix(scale)}.png`,
@@ -86,6 +92,9 @@ export function rasterContentsJson(asset: RenderedAsset, scales: Array<AssetScal
       ),
     ],
     info: INFO,
+  }
+  if (localized.length > 0) {
+    contents.properties = { localizable: true }
   }
   return JSON.stringify(contents, null, 2) + "\n"
 }

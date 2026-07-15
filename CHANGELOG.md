@@ -1,6 +1,12 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.3.2
+
+### 🛠 Fixed
+
+- Localized imagesets now carry `"localizable": true` in their properties, exactly as Xcode's own Localize button writes it - required for the Xcode editor's Localization panel and the Export Localizations (.xcloc) workflow to recognize the asset (per-image `locale` entries alone satisfy actool but not those flows). Property key order now matches Xcode's alphabetical writer.
+
 ## 2.3.1
 
 ### 🛠 Fixed
