@@ -26,7 +26,7 @@
     {
         "key": "assetLocales",
         "type": "array",
-        "default": [],
+        "default": ["tr"],
         "title": "Localized asset locales",
         "description": "Locale codes (BCP-47, e.g. tr, de, pt-BR) that produce localized imagesets. When non-empty, an asset named <base><separator><locale> (e.g. hero-tr) is folded into the <base> imageset as a localized variant, and Xcode serves the right file per app language while code keeps using the single Image(.hero) symbol. Every variant requires a base asset in the same folder; the export fails on orphan variants. The Xcode project must declare these languages or the variants are never selected at runtime. Empty disables the feature.",
         "category": "Localization"

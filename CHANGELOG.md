@@ -1,6 +1,12 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.3.1
+
+### 🛠 Fixed
+
+- `assetLocales` now defaults to `["tr"]` so Turkish variants fold into localized imagesets out of the box (the feature previously shipped disabled by default and produced separate imagesets until configured).
+
 ## 2.3.0
 
 ### 🚀 New
