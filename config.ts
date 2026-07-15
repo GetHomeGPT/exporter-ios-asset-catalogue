@@ -18,4 +18,13 @@ export type ExporterConfiguration = {
    * `deprecated/` group and its subgroups).
    */
   ignoredAssetPaths: Array<string>
+  /**
+   * Asset paths that are always exported as raster PNG (@1x/@2x/@3x), even when
+   * Supernova has a vector (SVG) representation for the asset. Use this for photo
+   * and artwork groups (e.g. `Images`) whose Figma export settings are 1x/2x/3x —
+   * Supernova sometimes produces an SVG wrapper for such assets, which would
+   * otherwise be mis-routed to the vector pipeline. Matching works the same way
+   * as `ignoredAssetPaths`.
+   */
+  rasterAssetPaths: Array<string>
 }

@@ -37,13 +37,13 @@ export function assetFileName(asset: RenderedAsset, scale: AssetScale): string {
   return `${assetName(asset)}${scaleSuffix(scale)}.${asset.format.toString()}`
 }
 
-/** True when the asset should be excluded because its group path matches an ignore fragment. */
-export function isPathIgnored(ignored: Array<string>, asset: RenderedAsset): boolean {
-  if (ignored.length === 0) {
+/** True when any segment of the asset's group path matches one of the filters. */
+function groupPathMatches(filters: Array<string>, asset: RenderedAsset): boolean {
+  if (filters.length === 0) {
     return false
   }
   const fragments = [...asset.group.path, asset.group.name]
-  for (const filter of ignored) {
+  for (const filter of filters) {
     for (const fragment of fragments) {
       if (fragment && filter.includes(fragment)) {
         return true
@@ -51,4 +51,18 @@ export function isPathIgnored(ignored: Array<string>, asset: RenderedAsset): boo
     }
   }
   return false
+}
+
+/** True when the asset should be excluded because its group path matches an ignore fragment. */
+export function isPathIgnored(ignored: Array<string>, asset: RenderedAsset): boolean {
+  return groupPathMatches(ignored, asset)
+}
+
+/**
+ * True when the asset must be exported as raster PNG regardless of whether a vector
+ * representation exists, because it lives under one of the configured raster paths
+ * (e.g. the `Images` group holding photos / app artwork exported from Figma at 1x/2x/3x).
+ */
+export function isForcedRasterPath(rasterPaths: Array<string>, asset: RenderedAsset): boolean {
+  return groupPathMatches(rasterPaths, asset)
 }

@@ -29,7 +29,9 @@ Assets.xcassets
 
 ### How the format is chosen
 
-The exporter reads each asset's vector representation (`svgUrl`). If a vector representation exists, the asset is written as an SVG; otherwise it is written as PNG at three scales. Supernova's recognition engine extracts vector data first and only falls back to a bitmap when an asset genuinely cannot be represented as a vector, so this cleanly separates icons from true images.
+The exporter reads each asset's vector representation (`svgUrl`). If a vector representation exists, the asset is written as an SVG; otherwise it is written as PNG at three scales.
+
+Because Supernova can produce an SVG wrapper even for true images (photos, app artwork), the *"Raster asset paths"* configuration (`rasterAssetPaths`, default `["Images"]`) forces every asset under the listed groups to the raster PNG pipeline, regardless of whether a vector representation exists. This keeps assets whose Figma export settings are `1x / 2x / 3x` exporting exactly that way — three PNGs — instead of a single SVG.
 
 > **Note:** vector detection relies on `svgUrl` being populated, which Supernova does for assets imported (or re-imported) after 2023-11-07. A vector imported before that date and never re-imported has no `svgUrl` and will export as PNG until it is re-imported.
 

@@ -10,7 +10,7 @@ import {
 } from "@supernovaio/sdk-exporters"
 import { FileHelper } from "@supernovaio/export-helpers"
 import { ExporterConfiguration } from "../config"
-import { imagesetDirectory, assetFileName, isPathIgnored } from "./paths"
+import { imagesetDirectory, assetFileName, isPathIgnored, isForcedRasterPath } from "./paths"
 import { vectorContentsJson, rasterContentsJson } from "./contents"
 
 /** Raster assets are exported at these scales. Vectors are a single, scale-independent SVG. */
@@ -19,8 +19,10 @@ const RASTER_SCALES: Array<AssetScale> = [AssetScale.x1, AssetScale.x2, AssetSca
 /**
  * An asset is treated as a vector when Supernova has an SVG representation for it
  * (`svgUrl`). Supernova's recognition engine extracts vector data first and only
- * falls back to a bitmap when an asset genuinely cannot be represented as a vector,
- * so this cleanly separates icons from true images.
+ * falls back to a bitmap when an asset genuinely cannot be represented as a vector.
+ * This is not sufficient on its own: Supernova can produce an SVG wrapper even for
+ * true images (photos / app artwork), so groups listed in `rasterAssetPaths` are
+ * additionally forced to the raster pipeline further below.
  *
  * Note: svgUrl is populated for assets imported (or re-imported) after 2023-11-07.
  * A vector imported before that date and never re-imported has no svgUrl and would
@@ -44,22 +46,41 @@ Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyO
   const assetGroups = await sdk.assets.getAssetGroups(remoteVersionIdentifier)
 
   // Route each asset to the representation that fits it best.
-  const vectorAssets = assets.filter((asset) => hasVectorRepresentation(asset))
-  const rasterAssets = assets.filter((asset) => !hasVectorRepresentation(asset))
+  const vectorCapableAssets = assets.filter((asset) => hasVectorRepresentation(asset))
+  const bitmapOnlyAssets = assets.filter((asset) => !hasVectorRepresentation(asset))
 
   const files: Array<AnyOutputFile> = []
 
+  // Assets under a configured raster path (e.g. "Images") are photos / app artwork
+  // whose Figma export settings are 1x/2x/3x PNG. Supernova may still hold an SVG
+  // wrapper for them, so they would otherwise be mis-routed to the vector pipeline.
+  // The group of an asset is only resolved on RenderedAsset, so the split happens
+  // after the SVG render below.
+  let rasterAssets = bitmapOnlyAssets
+
   // --- Vectors -> a single SVG per imageset (Preserve Vector Data) ---------------
-  if (vectorAssets.length > 0) {
+  if (vectorCapableAssets.length > 0) {
     const rendered = await sdk.assets.getRenderedAssets(
       remoteVersionIdentifier,
-      vectorAssets,
+      vectorCapableAssets,
       assetGroups,
       AssetFormat.svg,
       AssetScale.x1
     )
+
+    const forcedRasterIds = new Set<string>()
     for (const asset of rendered) {
-      if (isPathIgnored(exportConfiguration.ignoredAssetPaths, asset)) {
+      if (isForcedRasterPath(exportConfiguration.rasterAssetPaths, asset)) {
+        forcedRasterIds.add(asset.assetId)
+        if (asset.asset) {
+          forcedRasterIds.add(asset.asset.id)
+        }
+      }
+    }
+    rasterAssets = [...bitmapOnlyAssets, ...vectorCapableAssets.filter((asset) => forcedRasterIds.has(asset.id))]
+
+    for (const asset of rendered) {
+      if (forcedRasterIds.has(asset.assetId) || isPathIgnored(exportConfiguration.ignoredAssetPaths, asset)) {
         continue
       }
       const directory = imagesetDirectory(asset)

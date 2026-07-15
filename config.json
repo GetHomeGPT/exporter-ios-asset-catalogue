@@ -12,5 +12,12 @@
         "default": [],
         "title": "Ignored asset paths",
         "description": "Asset paths to exclude from the export. If you include partial path fragments, all matching paths are ignored (e.g. `deprecated` ignores everything under a `deprecated/` group and its subgroups)."
+    },
+    {
+        "key": "rasterAssetPaths",
+        "type": "array",
+        "default": ["Images"],
+        "title": "Raster asset paths",
+        "description": "Asset paths that are always exported as raster PNG (@1x/@2x/@3x), even when Supernova has a vector (SVG) representation for the asset. Use this for photo and artwork groups (e.g. `Images`) whose Figma export settings are 1x/2x/3x. Matching works the same way as ignored asset paths."
     }
 ]
