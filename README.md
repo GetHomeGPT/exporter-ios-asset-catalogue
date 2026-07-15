@@ -35,6 +35,25 @@ Because Supernova can produce an SVG wrapper even for true images (photos, app a
 
 > **Note:** vector detection relies on `svgUrl` being populated, which Supernova does for assets imported (or re-imported) after 2023-11-07. A vector imported before that date and never re-imported has no `svgUrl` and will export as PNG until it is re-imported.
 
+### Configuration
+
+| Option | Default | Effect |
+|---|---|---|
+| `templateRenderingForVectors` | `true` | Vector imagesets are template-rendered (adopt tint color). When off, the intent is written explicitly as `original`. |
+| `preserveVectorData` | `true` | Vector data is embedded so images scale at runtime. When off, Xcode rasterizes SVGs to @1x/@2x/@3x PNGs at build time (smaller bundle). |
+| `providesNamespace` | `false` | Group folders provide a namespace: lookups become `"Icons/app-icon"`, symbols become `ImageResource.Icons.appIcon`. |
+| `ignoredAssetPaths` | `[]` | Excludes matching groups (and their subgroups) from the export. |
+| `rasterAssetPaths` | `["Images"]` | Forces matching groups to PNG @1x/@2x/@3x even when an SVG representation exists. |
+
+The catalog root and every group folder receive a `Contents.json`, exactly as Xcode writes them.
+
+### Asset naming
+
+Keep your designer-friendly names (`app-icon`, `user profile`) — **no renaming is needed**. Xcode 15+ generates the type-safe symbols itself and converts names cleanly: `app-icon` → `.appIcon`, `user profile` → `.userProfile`, while string-based lookups keep the original name. Two hazards worth avoiding when naming assets in Figma/Supernova:
+
+- Names ending in `Image` or `Color` — Xcode strips these suffixes when generating symbols (`starImage` → `.star`), which can collide with another asset's symbol.
+- Two names that collapse to the same symbol (`app-icon` + `app icon`, or `star` + `starImage`) — Xcode emits a build warning and omits one of the symbols; string-based lookup of both assets keeps working.
+
 ### Naming
 
 The names of assets and their imageset directories are constructed from the original Supernova/Figma asset name, and directories mirror the group hierarchy. This exporter also generates the required `Contents.json` file for each imageset. For example:
@@ -74,23 +93,29 @@ UIImage(resource: .burger)     // UIKit
 
 This is a TypeScript exporter built on the [`@supernovaio/sdk-exporters`](https://www.npmjs.com/package/@supernovaio/sdk-exporters) model. The logic lives in:
 
-- `src/index.ts` — splits assets into vector/raster and drives the export
+- `src/index.ts` — the Pulsar entrypoint: fetches assets/groups (brand-aware) and renders them via the SDK
+- `src/generator.ts` — pure functions: vector/raster routing and catalogue generation (what the tests exercise)
 - `src/paths.ts` — imageset directories and file names
 - `src/contents.ts` — the generated `Contents.json`
 - `config.ts` / `config.json` — user-facing configuration
 
 Fork it, edit the source, then rebuild (see below) and upload your version. If you have never done this before, [follow our guide to modifying existing exporters](https://developers.supernova.io/building-exporters/cloning-exporters).
 
-### Building
+### Building & testing
 
 The compiled bundle at `dist/build.js` is the exporter's executable (referenced by `exporter.json`). After changing anything under `src/`, rebuild it:
 
 ```bash
 npm install
 npm run build     # bundles src/index.ts -> dist/build.js
+npm test          # generates 5 fixture scenarios into tests/output/ and compiles each with actool
 ```
 
-Commit the regenerated `dist/build.js` alongside your source changes.
+`npm test` builds full catalogues from fixtures, checks structural invariants (every `Contents.json` reference must match an emitted binary), lints all JSON, and compiles every scenario with `actool` — the same tool Xcode uses — so format regressions fail loudly. Commit the regenerated `dist/build.js` alongside your source changes.
+
+### A note on stale files in the destination
+
+Supernova deliveries **never delete files**: local exports (CLI, VS Code extension, downloaded builds) only add or overwrite files at matching paths, by design. If an asset changes format (e.g. `app-icon.svg` → `app-icon.png`), the old file remains in the destination. The "Clear target folder" pipeline option only applies to cloud PR delivery. For local workflows, delete the exporter-owned `Assets.xcassets` before re-exporting, and give every exporter its own destination folder.
 
 ## Installing
 

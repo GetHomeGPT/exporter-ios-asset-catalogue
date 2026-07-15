@@ -14,10 +14,29 @@ export function assetName(asset: RenderedAsset): string {
   return `${asset.originalName}${duplicates}`
 }
 
+/** Non-empty group path segments of an asset, e.g. ["Icons", "App"]. */
+export function groupSegments(asset: RenderedAsset): Array<string> {
+  return [...asset.group.path, asset.group.name].filter((segment) => segment && segment.length > 0)
+}
+
 /** `Assets.xcassets/<group path>/<name>.imageset` — the directory for one asset. */
 export function imagesetDirectory(asset: RenderedAsset): string {
-  const segments = [ASSET_CATALOG, ...asset.group.path, asset.group.name, `${assetName(asset)}.imageset`]
-  return segments.filter((segment) => segment && segment.length > 0).join("/")
+  return [ASSET_CATALOG, ...groupSegments(asset), `${assetName(asset)}.imageset`].join("/")
+}
+
+/**
+ * Every group directory on the way to an asset, outermost first, e.g.
+ * ["Assets.xcassets/Icons", "Assets.xcassets/Icons/App"]. Used to emit a
+ * Contents.json per group folder (the catalog root is handled separately).
+ */
+export function groupDirectories(asset: RenderedAsset): Array<string> {
+  const directories: Array<string> = []
+  let current = ASSET_CATALOG
+  for (const segment of groupSegments(asset)) {
+    current = `${current}/${segment}`
+    directories.push(current)
+  }
+  return directories
 }
 
 /** Scale suffix used by Xcode raster assets (@2x / @3x). x1 has no suffix; SVG never scales. */
@@ -27,8 +46,24 @@ export function scaleSuffix(scale: AssetScale): string {
       return "@2x"
     case AssetScale.x3:
       return "@3x"
+    case AssetScale.x4:
+      return "@4x"
     default:
       return ""
+  }
+}
+
+/** Scale label used inside Contents.json ("1x" / "2x" / "3x"). */
+export function scaleLabel(scale: AssetScale): string {
+  switch (scale) {
+    case AssetScale.x2:
+      return "2x"
+    case AssetScale.x3:
+      return "3x"
+    case AssetScale.x4:
+      return "4x"
+    default:
+      return "1x"
   }
 }
 
@@ -37,20 +72,18 @@ export function assetFileName(asset: RenderedAsset, scale: AssetScale): string {
   return `${assetName(asset)}${scaleSuffix(scale)}.${asset.format.toString()}`
 }
 
-/** True when any segment of the asset's group path matches one of the filters. */
+/**
+ * True when the asset's group path contains one of the filter fragments. The
+ * filter is the (partial) fragment and the slash-joined group path is the
+ * haystack, so `deprecated` matches `deprecated/legacy-icons` and `Icons/App`
+ * matches exactly that subtree.
+ */
 function groupPathMatches(filters: Array<string>, asset: RenderedAsset): boolean {
   if (filters.length === 0) {
     return false
   }
-  const fragments = [...asset.group.path, asset.group.name]
-  for (const filter of filters) {
-    for (const fragment of fragments) {
-      if (fragment && filter.includes(fragment)) {
-        return true
-      }
-    }
-  }
-  return false
+  const groupPath = groupSegments(asset).join("/")
+  return filters.some((filter) => groupPath.includes(filter))
 }
 
 /** True when the asset should be excluded because its group path matches an ignore fragment. */

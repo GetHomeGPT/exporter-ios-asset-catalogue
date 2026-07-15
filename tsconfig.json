@@ -7,10 +7,12 @@
     "moduleResolution": "node",
     "strictNullChecks": true,
     "esModuleInterop": true,
+    "skipLibCheck": true,
     "typeRoots": [
       "src/*",
       "types/*"
     ],
     "lib": ["ES2021", "DOM"]
-  }
+  },
+  "exclude": ["node_modules", "dist", "tests"]
 }

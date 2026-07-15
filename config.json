@@ -4,20 +4,39 @@
         "type": "boolean",
         "default": true,
         "title": "Tintable vector icons",
-        "description": "When enabled, every vector (SVG) imageset is marked as a template image (template-rendering-intent = template), so icons adopt the current tint / foreground color in SwiftUI and UIKit. Turn this off if your icon set is multicolor and must keep its original colors. Raster (PNG) assets are never affected."
+        "description": "When enabled, every vector (SVG) imageset is marked as a template image (template-rendering-intent = template), so icons adopt the current tint / foreground color in SwiftUI and UIKit. When disabled, the intent is written explicitly as original so icons keep their own colors. Raster (PNG) assets are never affected.",
+        "category": "Vector assets"
+    },
+    {
+        "key": "preserveVectorData",
+        "type": "boolean",
+        "default": true,
+        "title": "Preserve vector data",
+        "description": "When enabled, vector imagesets carry preserves-vector-representation, so Xcode embeds the vector data and the image scales smoothly at any runtime size (Dynamic Type, large layouts). Turn this off to let Xcode rasterize the SVG to @1x/@2x/@3x PNGs at build time instead - a smaller app bundle, at the cost of runtime scalability.",
+        "category": "Vector assets"
+    },
+    {
+        "key": "providesNamespace",
+        "type": "boolean",
+        "default": false,
+        "title": "Folders provide namespace",
+        "description": "When enabled, every group folder receives provides-namespace, so asset names are scoped by their folder. This changes BOTH names of every asset: string lookups become slash-qualified (Icons/app-icon) and the generated Swift symbols become nested enums (ImageResource.Icons.appIcon). Leave disabled to keep flat, catalog-unique names.",
+        "category": "Catalog structure"
     },
     {
         "key": "ignoredAssetPaths",
         "type": "array",
         "default": [],
         "title": "Ignored asset paths",
-        "description": "Asset paths to exclude from the export. If you include partial path fragments, all matching paths are ignored (e.g. `deprecated` ignores everything under a `deprecated/` group and its subgroups)."
+        "description": "Asset paths to exclude from the export. If you include partial path fragments, all matching paths are ignored (e.g. `deprecated` ignores everything under a `deprecated/` group and its subgroups).",
+        "category": "Asset selection"
     },
     {
         "key": "rasterAssetPaths",
         "type": "array",
         "default": ["Images"],
         "title": "Raster asset paths",
-        "description": "Asset paths that are always exported as raster PNG (@1x/@2x/@3x), even when Supernova has a vector (SVG) representation for the asset. Use this for photo and artwork groups (e.g. `Images`) whose Figma export settings are 1x/2x/3x. Matching works the same way as ignored asset paths."
+        "description": "Asset paths that are always exported as raster PNG (@1x/@2x/@3x), even when Supernova has a vector (SVG) representation for the asset. Use this for photo and artwork groups (e.g. `Images`) whose Figma export settings are 1x/2x/3x. Matching works the same way as ignored asset paths.",
+        "category": "Asset selection"
     }
 ]

@@ -3,3 +3,6 @@ node_modules/
 build/
 *.log
 .DS_Store
+tests/.build/
+tests/output/
+config.local.json

@@ -7,11 +7,28 @@ export type ExporterConfiguration = {
   /**
    * When enabled, every vector (SVG) imageset is marked as a template image
    * (`template-rendering-intent = "template"`), so icons adopt the current tint /
-   * foreground color in SwiftUI and UIKit. Turn this off if your icon set is
-   * multicolor and must keep its original colors. Raster (PNG) assets are never
-   * affected.
+   * foreground color in SwiftUI and UIKit. When disabled, the intent is written
+   * explicitly as `"original"` so the icons keep their own colors (instead of
+   * relying on Xcode's legacy "name ends in Template" auto-detection). Raster
+   * (PNG) assets are never affected.
    */
   templateRenderingForVectors: boolean
+  /**
+   * When enabled (default), vector imagesets carry `preserves-vector-representation`,
+   * so Xcode embeds the vector data and the image scales smoothly at any runtime
+   * size (Dynamic Type, large layouts). Turn this off to let Xcode rasterize the
+   * SVG to @1x/@2x/@3x PNGs at build time instead - a smaller app bundle, at the
+   * cost of runtime scalability.
+   */
+  preserveVectorData: boolean
+  /**
+   * When enabled, every group folder receives `provides-namespace`, so asset names
+   * are scoped by their folder. This changes BOTH names of every asset: string
+   * lookups become slash-qualified (`"Icons/app-icon"`) and the generated Swift
+   * symbols become nested enums (`ImageResource.Icons.appIcon`). Leave disabled to
+   * keep flat, catalog-unique names (`"app-icon"`, `.appIcon`).
+   */
+  providesNamespace: boolean
   /**
    * Asset paths to exclude from the export. If you include partial path fragments,
    * all matching paths are ignored (e.g. `deprecated` ignores everything under a
