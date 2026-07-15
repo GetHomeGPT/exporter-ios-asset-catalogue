@@ -1,0 +1,25 @@
+{
+  "name": "io.supernova.ios-asset-catalogue-exporter",
+  "version": "2.0.0",
+  "description": "Supernova.io | iOS Asset Catalogue exporter (SVG + PNG)",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npx webpack --mode=development --watch",
+    "build": "npx webpack --mode=production"
+  },
+  "author": "Supernova.io",
+  "license": "MIT",
+  "dependencies": {
+    "@supernovaio/export-helpers": "1.0.33",
+    "@supernovaio/sdk-exporters": "2.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.9",
+    "prettier": "3.0.3",
+    "terser-webpack-plugin": "5.4.0",
+    "ts-loader": "9.5.0",
+    "typescript": "5.2.2",
+    "webpack": "5.105.4",
+    "webpack-cli": "6.0.1"
+  }
+}

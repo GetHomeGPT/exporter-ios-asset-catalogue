@@ -6,42 +6,89 @@
 
 # iOS Catalogue Asset Exporter
 
-The iOS Catalogue Asset exporter allows you to **export a XCode asset catalogue** in such a way that it can be immediately used in your production codebase. 
+The iOS Catalogue Asset exporter allows you to **export an Xcode asset catalogue** in such a way that it can be immediately used in your production codebase. It is the single source of delivery for both your vector and raster assets: it inspects each asset and picks the right format automatically.
+
+- **Vector assets → SVG** with *Preserve Vector Data*, so a single file renders crisply at every scale.
+- **Raster assets → PNG** at `@1x`, `@2x` and `@3x`.
+
+The output targets **Xcode 16+ / iOS 16+**. Because it is a modern asset catalogue, Xcode automatically generates type-safe symbols for every asset (`ImageResource`, `Image(.burger)`, `UIImage(resource: .burger)`), so no separate accessor file is needed.
 
 ### Exporter Output
 
-This exporter will render image assets defined inside one specific brand as pdfs and will produce the following structure:
+Each asset is exported into its own `.imageset`, grouped by the folders defined in Supernova (and Figma). Vector and raster assets live side by side:
 
 ```
-/Icons
-   /Top Menu
-      |- Burger [pdf, preserve vector data]
-      |- User [pdf, preserve vector data]
+Assets.xcassets
+  /Icons
+     /Top Menu
+        Burger.imageset      -> Burger.svg            (vector, preserve vector data)
+        User.imageset        -> User.svg              (vector, preserve vector data)
+  /Illustrations
+     Hero.imageset           -> Hero.png / Hero@2x.png / Hero@3x.png   (raster)
 ```
+
+### How the format is chosen
+
+The exporter reads each asset's vector representation (`svgUrl`). If a vector representation exists, the asset is written as an SVG; otherwise it is written as PNG at three scales. Supernova's recognition engine extracts vector data first and only falls back to a bitmap when an asset genuinely cannot be represented as a vector, so this cleanly separates icons from true images.
+
+> **Note:** vector detection relies on `svgUrl` being populated, which Supernova does for assets imported (or re-imported) after 2023-11-07. A vector imported before that date and never re-imported has no `svgUrl` and will export as PNG until it is re-imported.
 
 ### Naming
 
-The names of icons will be constructed from the original name and path built from segments which correspond to groups the Supernova (and Figma) groups. This exporter also generates required `Contents.json` files for each asset. For example:
+The names of assets and their imageset directories are constructed from the original Supernova/Figma asset name, and directories mirror the group hierarchy. This exporter also generates the required `Contents.json` file for each imageset. For example:
 
 ```
-Icons
-  |- Top Menu
-     |- Burger
-     |- User
+Assets.xcassets/Icons/Top Menu/Burger.imageset/Burger.svg
+Assets.xcassets/Icons/Top Menu/Burger.imageset/Contents.json
+Assets.xcassets/Icons/Top Menu/User.imageset/User.svg
+Assets.xcassets/Icons/Top Menu/User.imageset/Contents.json
+Assets.xcassets/Illustrations/Hero.imageset/Hero.png
+Assets.xcassets/Illustrations/Hero.imageset/Hero@2x.png
+Assets.xcassets/Illustrations/Hero.imageset/Hero@3x.png
+Assets.xcassets/Illustrations/Hero.imageset/Contents.json
 ```
 
-Names follow `Original Icon Name` convention and will create separate directories for each group detected, also following `Original Directory` convention. The above example will be converted to the following icon paths:
+### Tintable icons (template rendering)
 
-```
-Assets.xcassets/Icons/Top Menu/Burger.pdf
-Assets.xcassets/Icons/Top Menu/User.pdf
+By default, vector imagesets are marked as **template images** (`template-rendering-intent = "template"`), so your icons automatically adopt the current tint / foreground color:
 
-& Support files
-Assets.xcassets/Icons/Top Menu/Contents.json
-Assets.xcassets/Icons/Top Menu/Contents.json
+```swift
+Image(.burger).foregroundStyle(.tint)   // SwiftUI
+UIImage(resource: .burger)              // already template-rendered
 ```
 
-This behavior can be fully customized by simply modifying the path generation template file `asset_path.pr` and additionally modifying configuration for each of the images in `asset_jsons.pr`. Simply fork, modify and upload as your version of the exporter. If you have never done this before, [follow our guide to modifying existing exporters](https://developers.supernova.io/building-exporters/cloning-exporters).
+If your icon set is **multicolor** and must keep its original colors, turn off *"Tintable vector icons"* in the exporter configuration — the SVGs are then rendered with their original colors. Raster (PNG) assets are never template-rendered.
+
+### Type-safe access in Xcode
+
+Because the output is a modern asset catalogue, **Xcode 15+ automatically generates type-safe symbols** for every asset — no separate accessor file is needed:
+
+```swift
+Image(.burger)                 // SwiftUI
+UIImage(resource: .burger)     // UIKit
+```
+
+### Customizing
+
+This is a TypeScript exporter built on the [`@supernovaio/sdk-exporters`](https://www.npmjs.com/package/@supernovaio/sdk-exporters) model. The logic lives in:
+
+- `src/index.ts` — splits assets into vector/raster and drives the export
+- `src/paths.ts` — imageset directories and file names
+- `src/contents.ts` — the generated `Contents.json`
+- `config.ts` / `config.json` — user-facing configuration
+
+Fork it, edit the source, then rebuild (see below) and upload your version. If you have never done this before, [follow our guide to modifying existing exporters](https://developers.supernova.io/building-exporters/cloning-exporters).
+
+### Building
+
+The compiled bundle at `dist/build.js` is the exporter's executable (referenced by `exporter.json`). After changing anything under `src/`, rebuild it:
+
+```bash
+npm install
+npm run build     # bundles src/index.ts -> dist/build.js
+```
+
+Commit the regenerated `dist/build.js` alongside your source changes.
 
 ## Installing
 

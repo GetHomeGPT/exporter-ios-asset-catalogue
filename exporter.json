@@ -1,25 +1,21 @@
 {
     "id": "io.supernova.ios-asset-catalogue-exporter",
     "name": "iOS Asset Catalogue",
-    "description": "iOS Asset Catalogue Exporter",
+    "description": "Exports design system assets into an Xcode asset catalogue: vector assets as SVG with Preserve Vector Data, raster assets as PNG @1x/@2x/@3x. Targets Xcode 16+ / iOS 16+.",
     "author": "Jiri Trecak",
     "organization": "Supernova",
     "homepage": "https://supernova.io",
-    "source_dir": "src",
-    "version": "1.2",
+    "version": "2.0.0",
     "usesBrands": true,
-    "config": {
-        "sources": "sources.json",
-        "output": "output.json",
-        "js": "src/js/helpers.js"
-    },
-    "engines": {
-        "pulsar": "1.0.0",
-        "supernova": "1.0.0"
-    },
+    "usesThemes": false,
+    "executable": "/dist/build.js",
+    "engine": "latest",
     "tags": [
         "Assets",
-        "PDF",
+        "Icons",
+        "Images",
+        "SVG",
+        "PNG",
         "iOS"
     ]
 }

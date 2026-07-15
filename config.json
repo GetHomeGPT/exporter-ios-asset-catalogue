@@ -1,0 +1,16 @@
+[
+    {
+        "key": "templateRenderingForVectors",
+        "type": "boolean",
+        "default": true,
+        "title": "Tintable vector icons",
+        "description": "When enabled, every vector (SVG) imageset is marked as a template image (template-rendering-intent = template), so icons adopt the current tint / foreground color in SwiftUI and UIKit. Turn this off if your icon set is multicolor and must keep its original colors. Raster (PNG) assets are never affected."
+    },
+    {
+        "key": "ignoredAssetPaths",
+        "type": "array",
+        "default": [],
+        "title": "Ignored asset paths",
+        "description": "Asset paths to exclude from the export. If you include partial path fragments, all matching paths are ignored (e.g. `deprecated` ignores everything under a `deprecated/` group and its subgroups)."
+    }
+]
