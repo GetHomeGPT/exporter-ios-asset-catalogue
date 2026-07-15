@@ -15,6 +15,26 @@ import {
   normalizeConfiguration,
   partitionVectorRenders,
 } from "./generator"
+import configOptions from "../config.json"
+
+/**
+ * Exporter configuration. Its content comes from the resolved default configuration
+ * (config.json) plus any user overrides of the configuration keys.
+ *
+ * This MUST be initialized before Pulsar.export() below: some executors invoke the
+ * export callback synchronously, and the callback reads the configuration before its
+ * first await — a later declaration would still be undefined at that point.
+ */
+export const exportConfiguration = Pulsar.exportConfig<ExporterConfiguration>()
+
+/** config.json is the single source of truth for defaults; overrides merge on top. */
+function resolveConfiguration(): ExporterConfiguration {
+  const defaults: { [key: string]: unknown } = {}
+  for (const option of configOptions as Array<{ key: string; default: unknown }>) {
+    defaults[option.key] = option.default
+  }
+  return normalizeConfiguration({ ...(defaults as unknown as ExporterConfiguration), ...(exportConfiguration ?? {}) })
+}
 
 /**
  * Export entrypoint. Called when running `export` through extensions or pipelines.
@@ -25,7 +45,7 @@ import {
  * (see tests/).
  */
 Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyOutputFile>> => {
-  const config = normalizeConfiguration(exportConfiguration)
+  const config = resolveConfiguration()
   const remoteVersionIdentifier: RemoteVersionIdentifier = {
     designSystemId: context.dsId,
     versionId: context.versionId,
@@ -70,9 +90,3 @@ Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyO
 
   return generateAssetCatalogue({ vectorRenders, rasterRendersByScale }, config)
 })
-
-/**
- * Exporter configuration. Its content comes from the resolved default configuration
- * (config.json) plus any user overrides of the configuration keys.
- */
-export const exportConfiguration = Pulsar.exportConfig<ExporterConfiguration>()

@@ -1,6 +1,12 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.2.1
+
+### 🛠 Fixed
+
+- `TypeError: Cannot read properties of undefined (reading 'ignoredAssetPaths')` at export start. The 2.2.0 refactor read the configuration on the first line of the export callback, but `exportConfiguration` was initialized *after* `Pulsar.export()` at the bottom of the module — an executor that invokes the callback synchronously saw it as `undefined` (2.1.0 masked this by first reading the config after an `await`). The initialization now precedes `Pulsar.export()`, and as defense in depth the configuration falls back to the `config.json` defaults (with any provided overrides merged on top) if the bridge ever returns nothing.
+
 ## 2.2.0
 
 ### 🚀 New

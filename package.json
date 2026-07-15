@@ -1,6 +1,6 @@
 {
   "name": "io.supernova.ios-asset-catalogue-exporter",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Supernova.io | iOS Asset Catalogue exporter (SVG + PNG)",
   "main": "index.js",
   "scripts": {
