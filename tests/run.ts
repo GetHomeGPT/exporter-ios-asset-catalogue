@@ -452,6 +452,34 @@ function makeStandardFixtures(): Array<Fixture> {
   console.log(`${scenario}: ${files.length} files`)
 }
 
+// --- Scenario 11: multicolor folders keep original colors, icons stay template ----
+{
+  const scenario = "multicolor"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), multicolorAssetPaths: ["Illustrations/Multicolor"] })
+  const files = generate(
+    [
+      makeFixture({ name: "burger", group: ["Icons", "App"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "party-scene", group: ["Illustrations", "Multicolor"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "spinner", group: ["Illustrations", "Tintable"], svgUrl: "https://x/c.svg" }),
+    ],
+    config
+  )
+  assertInvariants(scenario, files)
+  const expectations: Array<[string, string]> = [
+    ["Assets.xcassets/Icons/App/burger.imageset", "template"],
+    ["Assets.xcassets/Illustrations/Multicolor/party-scene.imageset", "original"],
+    ["Assets.xcassets/Illustrations/Tintable/spinner.imageset", "template"],
+  ]
+  for (const [directory, intent] of expectations) {
+    const contents = contentsOf(files, directory)
+    if (contents.properties?.["template-rendering-intent"] !== intent) {
+      fail(scenario, `${directory} must render as ${intent}, got ${JSON.stringify(contents.properties)}`)
+    }
+  }
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
 // --- Error cases: misconfiguration must fail loudly, before any rendering ---------
 function expectThrow(label: string, run: () => void, messageFragment: string): void {
   try {

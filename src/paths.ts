@@ -99,3 +99,11 @@ export function isPathIgnored(ignored: Array<string>, asset: RenderedAsset): boo
 export function isForcedRasterPath(rasterPaths: Array<string>, asset: RenderedAsset): boolean {
   return groupPathMatches(rasterPaths, asset)
 }
+
+/**
+ * True when the vector must keep its original colors (no template rendering)
+ * because it lives under one of the configured multicolor paths.
+ */
+export function isMulticolorPath(multicolorPaths: Array<string>, asset: RenderedAsset): boolean {
+  return groupPathMatches(multicolorPaths, asset)
+}

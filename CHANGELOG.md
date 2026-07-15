@@ -1,6 +1,12 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.4.0
+
+### 🚀 New
+
+- New `multicolorAssetPaths` option (default `[]`): folders listed here keep their vectors' ORIGINAL colors (`template-rendering-intent = original`) while `templateRenderingForVectors` stays on for everything else - tintable icons and multicolor illustrations now share one pipeline. Matching works like the other path options.
+
 ## 2.3.2
 
 ### 🛠 Fixed

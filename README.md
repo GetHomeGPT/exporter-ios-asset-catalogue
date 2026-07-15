@@ -40,6 +40,7 @@ Because Supernova can produce an SVG wrapper even for true images (photos, app a
 | Option | Default | Effect |
 |---|---|---|
 | `templateRenderingForVectors` | `true` | Vector imagesets are template-rendered (adopt tint color). When off, the intent is written explicitly as `original`. |
+| `multicolorAssetPaths` | `[]` | Folders whose vectors keep their original colors (`original` intent) while everything else stays template-rendered. |
 | `preserveVectorData` | `true` | Vector data is embedded so images scale at runtime. When off, Xcode rasterizes SVGs to @1x/@2x/@3x PNGs at build time (smaller bundle). |
 | `providesNamespace` | `false` | Group folders provide a namespace: lookups become `"Icons/app-icon"`, symbols become `ImageResource.Icons.appIcon`. |
 | `assetLocales` | `[]` | Locale codes (BCP-47) that produce localized imagesets from `<base><sep><locale>`-named assets. Empty = off. |
@@ -48,6 +49,19 @@ Because Supernova can produce an SVG wrapper even for true images (photos, app a
 | `rasterAssetPaths` | `["Images"]` | Forces matching groups to PNG @1x/@2x/@3x even when an SVG representation exists. |
 
 The catalog root and every group folder receive a `Contents.json`, exactly as Xcode writes them.
+
+### Tintable icons vs. multicolor illustrations
+
+When some vectors must adopt the tint color (icons) and others must keep their own colors (multicolor illustrations), split them by folder and list the multicolor folders in `multicolorAssetPaths` — one pipeline handles both:
+
+```
+📁 Icons/                     → template (tintable)
+📁 Illustrations/
+   📁 Tintable/               → template (tintable)
+   📁 Multicolor/             → original (keeps its colors)   ← multicolorAssetPaths: ["Illustrations/Multicolor"]
+```
+
+Do **not** solve this with two pipelines writing into the same catalog: deliveries never delete files, so the two exports would leave stale, conflicting output behind and double every configuration change.
 
 ### Localized assets
 

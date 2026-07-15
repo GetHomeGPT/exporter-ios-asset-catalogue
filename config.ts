@@ -60,4 +60,12 @@ export type ExporterConfiguration = {
    * as `ignoredAssetPaths`.
    */
   rasterAssetPaths: Array<string>
+  /**
+   * Asset paths whose vectors keep their ORIGINAL colors (template-rendering-intent
+   * = original) even while `templateRenderingForVectors` is on. Use this for
+   * multicolor illustrations that must not be tinted, while icons elsewhere stay
+   * template-rendered. Matching works the same way as `ignoredAssetPaths`. Has no
+   * effect when `templateRenderingForVectors` is off (everything is original then).
+   */
+  multicolorAssetPaths: Array<string>
 }

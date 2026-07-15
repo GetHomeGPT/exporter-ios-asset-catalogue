@@ -8,6 +8,7 @@ import {
   groupSegments,
   imagesetDirectory,
   isForcedRasterPath,
+  isMulticolorPath,
   isPathIgnored,
 } from "./paths"
 import {
@@ -87,6 +88,7 @@ export function normalizeConfiguration(config: ExporterConfiguration): ExporterC
     ...config,
     ignoredAssetPaths: cleanFragments(config.ignoredAssetPaths),
     rasterAssetPaths: cleanFragments(config.rasterAssetPaths),
+    multicolorAssetPaths: cleanFragments(config.multicolorAssetPaths),
     assetLocales,
     localeSuffixSeparator: separator === "" ? "-" : separator,
   }
@@ -312,11 +314,14 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
         })
       )
     }
+    // Multicolor folders opt out of template rendering per asset, so tintable
+    // icons and full-color illustrations can share one export.
+    const templateRendering = config.templateRenderingForVectors && !isMulticolorPath(config.multicolorAssetPaths, asset)
     files.push(
       FileHelper.createTextFile({
         relativePath: directory,
         fileName: "Contents.json",
-        content: vectorContentsJson(asset, config.templateRenderingForVectors, config.preserveVectorData, localized),
+        content: vectorContentsJson(asset, templateRendering, config.preserveVectorData, localized),
       })
     )
   }

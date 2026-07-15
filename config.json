@@ -8,6 +8,14 @@
         "category": "Vector assets"
     },
     {
+        "key": "multicolorAssetPaths",
+        "type": "array",
+        "default": [],
+        "title": "Multicolor asset paths",
+        "description": "Asset paths whose vectors keep their ORIGINAL colors (template-rendering-intent = original) even while Tintable vector icons is on. Use this for multicolor illustrations that must not be tinted, while icons elsewhere stay template-rendered. Matching works the same way as ignored asset paths. Has no effect when Tintable vector icons is off.",
+        "category": "Vector assets"
+    },
+    {
         "key": "preserveVectorData",
         "type": "boolean",
         "default": true,
