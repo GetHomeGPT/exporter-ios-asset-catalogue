@@ -12,8 +12,8 @@ import {
   isPathIgnored,
 } from "./paths"
 import {
-  LocalizedRaster,
-  LocalizedVector,
+  RasterVariant,
+  VectorVariant,
   infoContentsJson,
   namespaceGroupContentsJson,
   rasterContentsJson,
@@ -23,8 +23,33 @@ import {
 /** Raster assets are exported at these scales. Vectors are a single, scale-independent SVG. */
 export const RASTER_SCALES: Array<AssetScale> = [AssetScale.x1, AssetScale.x2, AssetScale.x3]
 
-/** A base asset together with its localized variants (empty when localization is off). */
-export type AssetFamily = { base: Asset; variants: Array<{ locale: string; asset: Asset }> }
+/**
+ * Device idioms the exporter can emit, with the raster scales each supports.
+ * actool silently drops an `ipad` 3x slot from the compiled catalog (a diagnostic
+ * appears only with --warnings), so 3x is never emitted for iPad. Idioms are a
+ * closed set — actool copies unknown values into the catalog with only a warning,
+ * so membership is validated here.
+ */
+export const IDIOM_RASTER_SCALES: Record<string, Array<AssetScale>> = {
+  ipad: [AssetScale.x1, AssetScale.x2],
+  iphone: [AssetScale.x1, AssetScale.x2, AssetScale.x3],
+}
+
+/** Identifies one variant of a base asset: a device idiom, a locale, or both. */
+export type VariantKey = { idiom?: string; locale?: string }
+
+/** A base asset together with its variants (empty when neither locales nor idioms are configured). */
+export type AssetFamily = { base: Asset; variants: Array<VariantKey & { asset: Asset }> }
+
+/** Deterministic imageset entry order: universal entries first, then per-idiom, locales alphabetical within. */
+function variantOrder(a: VariantKey, b: VariantKey): number {
+  return (a.idiom ?? "").localeCompare(b.idiom ?? "") || (a.locale ?? "").localeCompare(b.locale ?? "")
+}
+
+/** Human-readable variant tag for error messages: "ipad", "tr" or "ipad+tr". */
+function variantLabel(key: VariantKey): string {
+  return [key.idiom, key.locale].filter((part): part is string => part !== undefined).join("+")
+}
 
 /** Everything the pure catalogue generation needs; produced by the SDK calls in index.ts. */
 export type RenderedCatalogue = {
@@ -81,6 +106,22 @@ export function normalizeConfiguration(config: ExporterConfiguration): ExporterC
     throw new Error(`Invalid locale codes in assetLocales (expected BCP-47 like "tr" or "pt-BR"): ${invalidLocales.join(", ")}`)
   }
 
+  const assetIdioms = [...new Set(cleanFragments(config.assetIdioms).map((idiom) => idiom.toLowerCase()))].sort(
+    (a, b) => b.length - a.length || a.localeCompare(b)
+  )
+  const invalidIdioms = assetIdioms.filter((idiom) => !(idiom in IDIOM_RASTER_SCALES))
+  if (invalidIdioms.length > 0) {
+    throw new Error(
+      `Invalid device idioms in assetIdioms (supported: ${Object.keys(IDIOM_RASTER_SCALES).sort().join(", ")}): ${invalidIdioms.join(", ")}`
+    )
+  }
+  // The supported idioms cannot pass LOCALE_PATTERN today, but a future entry
+  // (e.g. "mac") also parses as a locale — one suffix must never match both axes.
+  const ambiguous = assetIdioms.filter((idiom) => assetLocales.includes(idiom))
+  if (ambiguous.length > 0) {
+    throw new Error(`assetIdioms and assetLocales must not share codes: ${ambiguous.join(", ")}`)
+  }
+
   // The separator is used verbatim (a space is valid for "hero tr" naming); only a
   // missing/empty value falls back to "-".
   const separator = config.localeSuffixSeparator ?? "-"
@@ -90,6 +131,7 @@ export function normalizeConfiguration(config: ExporterConfiguration): ExporterC
     rasterAssetPaths: cleanFragments(config.rasterAssetPaths),
     multicolorAssetPaths: cleanFragments(config.multicolorAssetPaths),
     assetLocales,
+    assetIdioms,
     localeSuffixSeparator: separator === "" ? "-" : separator,
   }
 }
@@ -111,44 +153,61 @@ export function hasVectorRepresentation(asset: Asset): boolean {
 }
 
 /**
- * Parses `<base><separator><locale>` names; null when the name carries no configured
- * locale suffix. Matching is case-insensitive ("hero-TR" folds under locale "tr")
- * and the returned locale is always the canonical configured code. Locales arrive
- * longest-first from normalizeConfiguration, so overlapping codes resolve correctly.
+ * Case-insensitive `<separator><value>` suffix strip; null when no configured value
+ * matches. Values arrive longest-first from normalizeConfiguration, so overlapping
+ * codes resolve correctly, and the returned value is always the canonical configured
+ * code ("hero-TR" folds under locale "tr").
  */
-export function parseLocaleSuffix(name: string, config: ExporterConfiguration): { baseName: string; locale: string } | null {
+function stripVariantSuffix(name: string, values: Array<string>, separator: string): { baseName: string; value: string } | null {
   const nameLower = name.toLowerCase()
-  for (const locale of config.assetLocales) {
-    const suffix = `${config.localeSuffixSeparator}${locale}`.toLowerCase()
+  for (const value of values) {
+    const suffix = `${separator}${value}`.toLowerCase()
     if (name.length > suffix.length && nameLower.endsWith(suffix)) {
-      return { baseName: name.slice(0, name.length - suffix.length), locale }
+      return { baseName: name.slice(0, name.length - suffix.length), value }
     }
   }
   return null
 }
 
 /**
- * Groups assets into families: each base asset plus the localized variants whose
- * name is `<base><separator><locale>`. When `groupKeyByAssetId` is provided (from
- * the asset groups), a variant is paired with the base in its OWN folder, so
- * same-named bases in different folders stay independent. Fails loudly on naming
- * problems — an orphan variant would otherwise become a locale-only imageset that
- * silently serves no image for every other language at runtime.
+ * Parses `<base><sep><idiom><sep><locale>` names, either suffix optional; null when
+ * the name carries neither. The locale is the last suffix, so it is stripped first
+ * ("hero-ipad-tr" -> locale "tr", then idiom "ipad", base "hero"). The reverse
+ * order ("hero-tr-ipad") is NOT parsed as both axes — it strips to base "hero-tr",
+ * which fails loudly as an orphan instead of silently mis-pairing.
+ */
+export function parseVariantSuffix(name: string, config: ExporterConfiguration): ({ baseName: string } & VariantKey) | null {
+  const locale = stripVariantSuffix(name, config.assetLocales, config.localeSuffixSeparator)
+  const idiom = stripVariantSuffix(locale?.baseName ?? name, config.assetIdioms, config.localeSuffixSeparator)
+  if (!locale && !idiom) {
+    return null
+  }
+  return { baseName: (idiom ?? locale)!.baseName, idiom: idiom?.value, locale: locale?.value }
+}
+
+/**
+ * Groups assets into families: each base asset plus the variants whose name is
+ * `<base><sep><idiom><sep><locale>` (either suffix optional). When
+ * `groupKeyByAssetId` is provided (from the asset groups), a variant is paired
+ * with the base in its OWN folder, so same-named bases in different folders stay
+ * independent. Fails loudly on naming problems — an orphan variant would otherwise
+ * become a variant-only imageset that silently serves no image everywhere else
+ * at runtime.
  */
 export function groupAssetFamilies(
   assets: Array<Asset>,
   config: ExporterConfiguration,
   groupKeyByAssetId?: Map<string, string>
 ): Array<AssetFamily> {
-  if (config.assetLocales.length === 0) {
+  if (config.assetLocales.length === 0 && config.assetIdioms.length === 0) {
     return assets.map((asset) => ({ base: asset, variants: [] }))
   }
   const keyOf = (asset: Asset): string | undefined => groupKeyByAssetId?.get(asset.id)
 
   const bases: Array<Asset> = []
-  const variants: Array<{ baseName: string; locale: string; asset: Asset }> = []
+  const variants: Array<{ baseName: string; asset: Asset } & VariantKey> = []
   for (const asset of assets) {
-    const parsed = parseLocaleSuffix(asset.name, config)
+    const parsed = parseVariantSuffix(asset.name, config)
     if (parsed) {
       variants.push({ ...parsed, asset })
     } else {
@@ -202,14 +261,14 @@ export function groupAssetFamilies(
     }
 
     const family = families.get(chosen)!
-    if (family.variants.some((existing) => existing.locale === variant.locale)) {
-      problems.push(`duplicate "${variant.locale}" variant for base asset "${variant.baseName}"`)
+    if (family.variants.some((existing) => existing.idiom === variant.idiom && existing.locale === variant.locale)) {
+      problems.push(`duplicate "${variantLabel(variant)}" variant for base asset "${variant.baseName}"`)
       continue
     }
-    family.variants.push({ locale: variant.locale, asset: variant.asset })
+    family.variants.push({ idiom: variant.idiom, locale: variant.locale, asset: variant.asset })
   }
   if (problems.length > 0) {
-    throw new Error(`Localized asset problems:\n- ${problems.join("\n- ")}`)
+    throw new Error(`Asset variant problems:\n- ${problems.join("\n- ")}`)
   }
   return [...families.values()]
 }
@@ -246,8 +305,8 @@ export function partitionVectorRenders(
 }
 
 /**
- * Decides per FAMILY which pipeline to use, so a base and its localized variants
- * always land in one imageset with one format:
+ * Decides per FAMILY which pipeline to use, so a base and its variants always
+ * land in one imageset with one format:
  * - vector: every member has an SVG representation and no member sits under a
  *   forced-raster group (checked on the SVG renders, where groups are resolved);
  * - raster: everything else (PNG is always renderable).
@@ -268,7 +327,7 @@ export function routeFamilies(
   }
 }
 
-/** Stable key that pairs a localized variant render with its base render. */
+/** Stable key that pairs a variant render with its base render. */
 function familyKey(render: RenderedAsset, baseName: string): string {
   return `${groupSegments(render).join("/")}//${baseName}`
 }
@@ -276,22 +335,22 @@ function familyKey(render: RenderedAsset, baseName: string): string {
 /**
  * Pure catalogue generation: turns rendered assets into the full Assets.xcassets
  * file list — root Contents.json, one Contents.json per group folder, and one
- * imageset (binaries + Contents.json) per asset FAMILY: localized variants are
- * folded into their base imageset as per-locale entries.
+ * imageset (binaries + Contents.json) per asset FAMILY: variants are folded into
+ * their base imageset as per-locale / per-idiom entries.
  */
 export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: ExporterConfiguration): Array<AnyOutputFile> {
   const files: Array<AnyOutputFile> = []
   const groupFolders = new Set<string>()
 
-  // --- Vectors -> one imageset per family, a single SVG per locale ---------------
+  // --- Vectors -> one imageset per family, a single SVG per variant --------------
   const vectorRenders = catalogue.vectorRenders.filter((render) => !isPathIgnored(config.ignoredAssetPaths, render))
-  const vectorVariants = new Map<string, Array<LocalizedVector>>()
+  const vectorVariants = new Map<string, Array<VectorVariant>>()
   const vectorBases: Array<RenderedAsset> = []
   for (const render of vectorRenders) {
-    const parsed = parseLocaleSuffix(render.originalName, config)
+    const parsed = parseVariantSuffix(render.originalName, config)
     if (parsed) {
       const key = familyKey(render, parsed.baseName)
-      vectorVariants.set(key, [...(vectorVariants.get(key) ?? []), { locale: parsed.locale, asset: render }])
+      vectorVariants.set(key, [...(vectorVariants.get(key) ?? []), { idiom: parsed.idiom, locale: parsed.locale, asset: render }])
     } else {
       vectorBases.push(render)
     }
@@ -302,10 +361,10 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
     groupDirectories(asset).forEach((folder) => groupFolders.add(folder))
 
     const key = familyKey(asset, asset.originalName)
-    const localized = (vectorVariants.get(key) ?? []).sort((a, b) => a.locale.localeCompare(b.locale))
+    const variants = (vectorVariants.get(key) ?? []).sort(variantOrder)
     vectorVariants.delete(key)
 
-    for (const render of [asset, ...localized.map((variant) => variant.asset)]) {
+    for (const render of [asset, ...variants.map((variant) => variant.asset)]) {
       files.push(
         FileHelper.createCopyRemoteFile({
           url: render.sourceUrl,
@@ -321,7 +380,7 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
       FileHelper.createTextFile({
         relativePath: directory,
         fileName: "Contents.json",
-        content: vectorContentsJson(asset, templateRendering, config.preserveVectorData, localized),
+        content: vectorContentsJson(asset, templateRendering, config.preserveVectorData, variants),
       })
     )
   }
@@ -329,11 +388,11 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
   if (vectorVariants.size > 0) {
     const orphans = [...vectorVariants.values()].flat().map((variant) => variant.asset.originalName)
     throw new Error(
-      `Localized variants without a usable base: ${orphans.join(", ")} — each variant needs a base asset in the same folder (and the base must have rendered)`
+      `Asset variants without a usable base: ${orphans.join(", ")} — each variant needs a base asset in the same folder (and the base must have rendered)`
     )
   }
 
-  // --- Rasters -> one imageset per family, PNG per locale x rendered scale -------
+  // --- Rasters -> one imageset per family, PNG per variant x rendered scale ------
   const rasterRendersByScale = catalogue.rasterRendersByScale.map((rendered) =>
     rendered.filter((render) => !isPathIgnored(config.ignoredAssetPaths, render))
   )
@@ -349,16 +408,16 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
   // (first available render wins), so an asset whose @1x render failed still gets
   // an imageset from its remaining scales instead of being dropped silently.
   const baseRenders = new Map<string, RenderedAsset>()
-  const rasterVariants = new Map<string, Array<{ locale: string; render: RenderedAsset }>>()
+  const rasterVariants = new Map<string, Array<VariantKey & { render: RenderedAsset }>>()
   const seenVariantIds = new Set<string>()
   for (const rendered of rasterRendersByScale) {
     for (const asset of rendered) {
-      const parsed = parseLocaleSuffix(asset.originalName, config)
+      const parsed = parseVariantSuffix(asset.originalName, config)
       if (parsed) {
         if (!seenVariantIds.has(asset.assetId)) {
           seenVariantIds.add(asset.assetId)
           const key = familyKey(asset, parsed.baseName)
-          rasterVariants.set(key, [...(rasterVariants.get(key) ?? []), { locale: parsed.locale, render: asset }])
+          rasterVariants.set(key, [...(rasterVariants.get(key) ?? []), { idiom: parsed.idiom, locale: parsed.locale, render: asset }])
         }
       } else if (!baseRenders.has(asset.assetId)) {
         baseRenders.set(asset.assetId, asset)
@@ -374,15 +433,25 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
     groupDirectories(baseAsset).forEach((folder) => groupFolders.add(folder))
 
     const key = familyKey(baseAsset, baseAsset.originalName)
-    const localized: Array<LocalizedRaster> = (rasterVariants.get(key) ?? [])
-      .sort((a, b) => a.locale.localeCompare(b.locale))
-      .map((variant) => ({ locale: variant.locale, asset: variant.render, scales: renderedScalesOf(variant.render.assetId) }))
+    // Idiom variants are capped to the scales their device family supports
+    // (IDIOM_RASTER_SCALES) — an out-of-range slot like ipad@3x would be silently
+    // dropped by actool, leaving a dead file in the catalog.
+    const variants: Array<RasterVariant> = (rasterVariants.get(key) ?? [])
+      .sort(variantOrder)
+      .map((variant) => ({
+        idiom: variant.idiom,
+        locale: variant.locale,
+        asset: variant.render,
+        scales: renderedScalesOf(variant.render.assetId).filter(
+          (scale) => variant.idiom === undefined || IDIOM_RASTER_SCALES[variant.idiom].includes(scale)
+        ),
+      }))
     rasterVariants.delete(key)
 
     // Contents.json must only reference files that actually exist, so collect the
     // scales whose render succeeded (a miss would otherwise become an Xcode warning).
     const baseScales = renderedScalesOf(baseAsset.assetId)
-    for (const member of [{ asset: baseAsset, scales: baseScales }, ...localized.map((variant) => ({ asset: variant.asset, scales: variant.scales }))]) {
+    for (const member of [{ asset: baseAsset, scales: baseScales }, ...variants.map((variant) => ({ asset: variant.asset, scales: variant.scales }))]) {
       RASTER_SCALES.forEach((scale, index) => {
         if (!member.scales.includes(scale)) {
           return
@@ -402,7 +471,7 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
       FileHelper.createTextFile({
         relativePath: directory,
         fileName: "Contents.json",
-        content: rasterContentsJson(baseAsset, baseScales, localized),
+        content: rasterContentsJson(baseAsset, baseScales, variants),
       })
     )
   }
@@ -410,7 +479,7 @@ export function generateAssetCatalogue(catalogue: RenderedCatalogue, config: Exp
   if (rasterVariants.size > 0) {
     const orphans = [...rasterVariants.values()].flat().map((variant) => variant.render.originalName)
     throw new Error(
-      `Localized variants without a usable base: ${orphans.join(", ")} — each variant needs a base asset in the same folder (and the base must have rendered)`
+      `Asset variants without a usable base: ${orphans.join(", ")} — each variant needs a base asset in the same folder (and the base must have rendered)`
     )
   }
 

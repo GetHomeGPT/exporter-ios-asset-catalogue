@@ -37,12 +37,26 @@ export type ExporterConfiguration = {
    * `Image(.hero)` symbol. Every variant requires a base asset in the same folder;
    * the export fails loudly on orphan variants. The app's Xcode project must declare
    * these languages (Project > Info > Localizations) or the variants are never
-   * selected at runtime. Empty (default) disables the feature entirely.
+   * selected at runtime. Empty disables the feature entirely.
    */
   assetLocales: Array<string>
   /**
-   * Separator between the base asset name and the locale suffix (`hero-tr` with `-`,
-   * `hero_tr` with `_`). Only used when `assetLocales` is non-empty.
+   * Device idioms (`ipad`, `iphone`) that produce device-specific imageset entries.
+   * When non-empty, an asset named `<base><separator><idiom>` (e.g. `hero-ipad`) is
+   * folded into the `<base>` imageset as an entry Xcode serves only on that device
+   * family, while the base entry stays the universal fallback for everything else.
+   * Composes with `assetLocales` as `<base><separator><idiom><separator><locale>`
+   * (`hero-ipad-tr` = iPad + Turkish; the idiom always precedes the locale).
+   * Every variant requires a base asset in the same folder; the export fails
+   * loudly on orphan variants. iPad raster variants are exported at @1x/@2x only
+   * (iPads have no 3x displays and actool silently drops `ipad` 3x slots).
+   * Empty disables the feature.
+   */
+  assetIdioms: Array<string>
+  /**
+   * Separator between the base asset name and the locale / device idiom suffix
+   * (`hero-tr` and `hero-ipad` with `-`, `hero_tr` with `_`). Only used when
+   * `assetLocales` or `assetIdioms` is non-empty.
    */
   localeSuffixSeparator: string
   /**

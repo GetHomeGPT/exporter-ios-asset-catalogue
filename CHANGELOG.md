@@ -1,6 +1,24 @@
 ### Release Notes
 All the updates to this exporter are documented in this file.
 
+## 2.5.0
+
+### 🚀 New
+
+- Tablet / device variants: new `assetIdioms` option (default `["ipad"]`) folds `<base><separator><idiom>`-named assets (e.g. `hero-ipad`) into the base asset's imageset as device-specific entries (`idiom: "ipad"`), served only on that device family while the base stays the universal fallback for everything else. Supported idioms: `ipad`, `iphone`.
+- Composes with localization: `hero-ipad-tr` = iPad + Turkish. The suffix order is `<base><sep><idiom><sep><locale>`; the reverse order fails loudly as an orphan instead of silently mis-pairing. An iPad+locale variant does not require an iPad base — iPads in other languages fall back to the universal entry.
+- Same guard rails as locales: orphan variants, duplicate `(idiom, locale)` pairs, invalid idiom values and idiom/locale code collisions fail the export with actionable messages, before any rendering happens.
+- iPad raster variants are emitted at @1x/@2x only: iPads have no 3x displays and actool silently drops `ipad` 3x slots from the compiled catalog (without `--warnings` there is no diagnostic at all), so the exporter never writes them.
+- Idiom-only imagesets do not carry `localizable` — that property is reserved for the locale workflow (Xcode Localization panel / .xcloc export).
+
+### 🛠 Fixed
+
+- README still documented the pre-2.3.1 `assetLocales` default (`[]`); the configuration table and the localized-assets section now match the actual default `["tr"]`.
+
+### ⚠️ Behavior change
+
+- With the new default `assetIdioms: ["ipad"]`, an asset whose name literally ends in `-ipad` is now treated as a device variant: it folds into its base imageset (or fails the export as an orphan when no base exists) instead of producing a standalone imageset. Set `assetIdioms: []` to restore the old behavior.
+
 ## 2.4.0
 
 ### 🚀 New

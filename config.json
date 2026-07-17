@@ -40,11 +40,19 @@
         "category": "Localization"
     },
     {
+        "key": "assetIdioms",
+        "type": "array",
+        "default": ["ipad"],
+        "title": "Device variant idioms",
+        "description": "Device idioms (ipad, iphone) that produce device-specific imageset entries. When non-empty, an asset named <base><separator><idiom> (e.g. hero-ipad) is folded into the <base> imageset as an entry served only on that device family, while the base stays the universal fallback. Composes with locales as <base><separator><idiom><separator><locale> (hero-ipad-tr = iPad + Turkish; idiom before locale). Every variant requires a base asset in the same folder; the export fails on orphan variants. iPad raster variants export at @1x/@2x only. Empty disables the feature.",
+        "category": "Device variants"
+    },
+    {
         "key": "localeSuffixSeparator",
         "type": "string",
         "default": "-",
-        "title": "Locale suffix separator",
-        "description": "Separator between the base asset name and the locale suffix (hero-tr with -, hero_tr with _). Only used when locales are configured.",
+        "title": "Variant suffix separator",
+        "description": "Separator between the base asset name and the locale or device idiom suffix (hero-tr / hero-ipad with -, hero_tr with _). Only used when locales or idioms are configured.",
         "category": "Localization"
     },
     {

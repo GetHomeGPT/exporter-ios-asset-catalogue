@@ -1,6 +1,6 @@
 /**
  * Generation smoke test: builds the asset catalogue from plain-object fixtures in
- * five representative configurations and writes them to tests/output/<scenario>/.
+ * representative configurations and writes them to tests/output/<scenario>/.
  * Text files are written as-is; copy-remote descriptors are materialized as tiny
  * placeholder binaries so each scenario directory is a complete .xcassets that
  * tests/validate.sh can lint and compile with actool.
@@ -480,6 +480,104 @@ function makeStandardFixtures(): Array<Fixture> {
   console.log(`${scenario}: ${files.length} files`)
 }
 
+// --- Scenario 12: device idiom variants, alone and combined with locales ----------
+{
+  const scenario = "idiom-variants"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"], assetIdioms: ["ipad"] })
+  const fixtures = [
+    // full matrix: universal, universal+tr, ipad, ipad+tr -> ONE imageset
+    makeFixture({ name: "hero", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+    makeFixture({ name: "hero-tr", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+    makeFixture({ name: "hero-ipad", group: ["Icons"], svgUrl: "https://x/c.svg" }),
+    makeFixture({ name: "hero-ipad-tr", group: ["Icons"], svgUrl: "https://x/d.svg" }),
+    // idiom-only family (case-insensitive suffix) -> must NOT be marked localizable
+    makeFixture({ name: "banner", group: ["Icons"], svgUrl: "https://x/e.svg" }),
+    makeFixture({ name: "banner-iPad", group: ["Icons"], svgUrl: "https://x/f.svg" }),
+    // raster family under Images: the iPad variant must drop @3x
+    makeFixture({ name: "photo", group: ["Images"], svgUrl: "https://x/g.svg" }),
+    makeFixture({ name: "photo-ipad", group: ["Images"], svgUrl: "https://x/h.svg" }),
+    // iPad+locale variant WITHOUT an iPad base: universal base is enough
+    makeFixture({ name: "card", group: ["Icons"], svgUrl: "https://x/i.svg" }),
+    makeFixture({ name: "card-ipad-tr", group: ["Icons"], svgUrl: "https://x/j.svg" }),
+  ]
+  const files = generate(fixtures, config)
+  assertInvariants(scenario, files)
+
+  const hero = contentsOf(files, "Assets.xcassets/Icons/hero.imageset")
+  const heroEntries = hero.images as Array<{ filename: string; idiom: string; locale?: string }>
+  const heroShape = heroEntries.map((entry) => `${entry.idiom}${entry.locale ? "/" + entry.locale : ""}`).join(",")
+  if (heroShape !== "universal,universal/tr,ipad,ipad/tr") {
+    fail(scenario, `expected [universal, universal/tr, ipad, ipad/tr] entries, got ${JSON.stringify(heroEntries)}`)
+  }
+  if (hero.properties?.["localizable"] !== true) {
+    fail(scenario, `imageset with locale variants must carry localizable=true, got ${JSON.stringify(hero.properties)}`)
+  }
+  if (files.some((file) => file.path.includes("hero-ipad.imageset") || file.path.includes("hero-ipad-tr.imageset"))) {
+    fail(scenario, "idiom variants must not get their own imagesets")
+  }
+
+  const banner = contentsOf(files, "Assets.xcassets/Icons/banner.imageset")
+  const bannerShape = (banner.images as Array<{ filename: string; idiom: string }>).map((entry) => entry.idiom).join(",")
+  if (bannerShape !== "universal,ipad") {
+    fail(scenario, `expected banner as [universal, ipad], got ${JSON.stringify(banner.images)}`)
+  }
+  if ("localizable" in (banner.properties ?? {})) {
+    fail(scenario, "idiom-only imagesets must not carry localizable")
+  }
+
+  // iPads have no 3x displays; actool silently drops an ipad@3x slot, so the
+  // exporter must not emit one even though the @3x render exists.
+  const photo = contentsOf(files, "Assets.xcassets/Images/photo.imageset")
+  const photoShape = (photo.images as Array<{ filename: string; idiom: string; scale?: string }>)
+    .map((entry) => `${entry.idiom}@${entry.scale}`)
+    .join(",")
+  if (photoShape !== "universal@1x,universal@2x,universal@3x,ipad@1x,ipad@2x") {
+    fail(scenario, `expected iPad raster variant capped at @2x, got ${JSON.stringify(photo.images)}`)
+  }
+  if ("localizable" in (photo.properties ?? {})) {
+    fail(scenario, "idiom-only raster imagesets must not carry localizable")
+  }
+
+  // An iPad+locale variant needs only the universal base — iPads in other
+  // languages fall back to it.
+  const card = contentsOf(files, "Assets.xcassets/Icons/card.imageset")
+  const cardEntries = card.images as Array<{ filename: string; idiom: string; locale?: string }>
+  const cardShape = cardEntries.map((entry) => `${entry.idiom}${entry.locale ? "/" + entry.locale : ""}`).join(",")
+  if (cardShape !== "universal,ipad/tr") {
+    fail(scenario, `expected card as [universal, ipad/tr] without an iPad base, got ${JSON.stringify(cardEntries)}`)
+  }
+  if (card.properties?.["localizable"] !== true) {
+    fail(scenario, `card carries a locale variant and must be localizable, got ${JSON.stringify(card.properties)}`)
+  }
+
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
+// --- Scenario 13: iphone idiom keeps @3x, ipad stays capped -----------------------
+{
+  const scenario = "idiom-iphone"
+  const config = normalizeConfiguration({ ...defaultConfiguration(), assetIdioms: ["ipad", "iphone"] })
+  const files = generate(
+    [
+      makeFixture({ name: "widget", group: ["Images"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "widget-iphone", group: ["Images"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "widget-ipad", group: ["Images"], svgUrl: "https://x/c.svg" }),
+    ],
+    config
+  )
+  assertInvariants(scenario, files)
+  const widget = contentsOf(files, "Assets.xcassets/Images/widget.imageset")
+  const widgetShape = (widget.images as Array<{ filename: string; idiom: string; scale?: string }>)
+    .map((entry) => `${entry.idiom}@${entry.scale}`)
+    .join(",")
+  if (widgetShape !== "universal@1x,universal@2x,universal@3x,ipad@1x,ipad@2x,iphone@1x,iphone@2x,iphone@3x") {
+    fail(scenario, `expected iphone at all three scales and ipad capped at @2x, got ${JSON.stringify(widget.images)}`)
+  }
+  writeFiles(path.join(outputRoot, scenario), files)
+  console.log(`${scenario}: ${files.length} files`)
+}
+
 // --- Error cases: misconfiguration must fail loudly, before any rendering ---------
 function expectThrow(label: string, run: () => void, messageFragment: string): void {
   try {
@@ -553,6 +651,59 @@ expectThrow(
   "invalid-locale",
   () => normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr", "türkçe!"] }),
   "Invalid locale codes"
+)
+
+expectThrow(
+  "invalid-idiom",
+  () => normalizeConfiguration({ ...defaultConfiguration(), assetIdioms: ["desktop"] }),
+  "Invalid device idioms"
+)
+
+// "ipad" itself can never pass the locale pattern, so this guard is only reachable
+// once IDIOM_RASTER_SCALES grows a locale-shaped entry — locked in regardless.
+expectThrow(
+  "idiom-as-locale",
+  () => normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["ipad"] }),
+  "Invalid locale codes"
+)
+
+expectThrow(
+  "orphan-idiom-variant",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration() })
+    const fixtures = [makeFixture({ name: "banner-ipad", group: ["Icons"], svgUrl: "https://x/y.svg" })]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  "has no base asset"
+)
+
+expectThrow(
+  "duplicate-idiom",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetIdioms: ["ipad"] })
+    const fixtures = [
+      makeFixture({ name: "promo", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "promo-ipad", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+      makeFixture({ name: "promo-ipad", group: ["Icons"], svgUrl: "https://x/c.svg", duplicates: 1 }),
+    ]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  "duplicate"
+)
+
+// The canonical suffix order is <base><sep><idiom><sep><locale>; the reverse
+// ("hero-tr-ipad") must fail as an orphan of "hero-tr" instead of mis-pairing.
+expectThrow(
+  "wrong-suffix-order",
+  () => {
+    const config = normalizeConfiguration({ ...defaultConfiguration(), assetLocales: ["tr"], assetIdioms: ["ipad"] })
+    const fixtures = [
+      makeFixture({ name: "hero", group: ["Icons"], svgUrl: "https://x/a.svg" }),
+      makeFixture({ name: "hero-tr-ipad", group: ["Icons"], svgUrl: "https://x/b.svg" }),
+    ]
+    groupAssetFamilies(fixtures.map((fixture) => fixture.asset), config, groupKeys(fixtures))
+  },
+  'no base asset named "hero-tr"'
 )
 
 expectThrow(

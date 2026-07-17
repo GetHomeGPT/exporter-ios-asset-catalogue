@@ -43,8 +43,9 @@ Because Supernova can produce an SVG wrapper even for true images (photos, app a
 | `multicolorAssetPaths` | `[]` | Folders whose vectors keep their original colors (`original` intent) while everything else stays template-rendered. |
 | `preserveVectorData` | `true` | Vector data is embedded so images scale at runtime. When off, Xcode rasterizes SVGs to @1x/@2x/@3x PNGs at build time (smaller bundle). |
 | `providesNamespace` | `false` | Group folders provide a namespace: lookups become `"Icons/app-icon"`, symbols become `ImageResource.Icons.appIcon`. |
-| `assetLocales` | `[]` | Locale codes (BCP-47) that produce localized imagesets from `<base><sep><locale>`-named assets. Empty = off. |
-| `localeSuffixSeparator` | `-` | Separator between base name and locale suffix (`hero-tr`). |
+| `assetLocales` | `["tr"]` | Locale codes (BCP-47) that produce localized imagesets from `<base><sep><locale>`-named assets. Empty = off. |
+| `assetIdioms` | `["ipad"]` | Device idioms (`ipad`, `iphone`) that fold `<base><sep><idiom>`-named assets into the base imageset as device-specific entries. Empty = off. |
+| `localeSuffixSeparator` | `-` | Separator between base name and the locale / device suffix (`hero-tr`, `hero-ipad`). |
 | `ignoredAssetPaths` | `[]` | Excludes matching groups (and their subgroups) from the export. |
 | `rasterAssetPaths` | `["Images"]` | Forces matching groups to PNG @1x/@2x/@3x even when an SVG representation exists. |
 
@@ -65,7 +66,7 @@ Do **not** solve this with two pipelines writing into the same catalog: deliveri
 
 ### Localized assets
 
-For artwork with baked-in text, set `assetLocales` (e.g. `["tr", "de"]`) and maintain per-language sibling components **in the same Figma frame / Supernova folder**, named with the locale suffix:
+For artwork with baked-in text, maintain per-language sibling components **in the same Figma frame / Supernova folder**, named with the locale suffix. `assetLocales` defaults to `["tr"]`, so Turkish variants work out of the box; set it to add or replace languages (e.g. `["tr", "de"]`), or to `[]` to turn the feature off:
 
 ```
 Illustrations/
@@ -84,8 +85,34 @@ Rules and gotchas:
 - The Xcode **project must declare the languages** (Project > Info > Localizations): a `tr` variant can never be selected while the app only declares English. Variant selection follows the app's language, not the device region.
 - Test with the scheme's *App Language* setting — SwiftUI's `.environment(\.locale)` does **not** switch asset variants.
 - Prefer keeping text out of images entirely (overlay a localized `Text`) when the artwork allows it; localize only what genuinely bakes text in.
-- **Configured suffixes are reserved.** With `assetLocales: ["id"]`, an unrelated asset named `user-id` would be folded into `user.imageset` as an Indonesian variant. Pick locale codes you actually ship and avoid asset names ending in `<separator><locale>` that are not variants.
+- **Configured suffixes are reserved.** With `assetLocales: ["id"]`, an unrelated asset named `user-id` would be folded into `user.imageset` as an Indonesian variant — the same applies to idiom suffixes like `-ipad`. Pick locale codes you actually ship and avoid asset names ending in a configured suffix that are not variants.
 - Suffix matching is case-insensitive (`hero-TR` folds under `tr`) and locale codes are canonicalized to BCP-47 casing (`TR` → `tr`, `pt-br` → `pt-BR`). The separator is used verbatim (a space works for `hero tr` naming); an empty value falls back to `-`.
+
+### Tablet (iPad) variants
+
+For artwork that needs a different image on tablets, add a sibling component with the device suffix — `assetIdioms` defaults to `["ipad"]`, so this works out of the box:
+
+```
+Illustrations/
+  onboarding-hero            <- universal (all devices)
+  onboarding-hero-ipad       <- served on iPad only
+```
+
+The variant folds into the base imageset as an `idiom: "ipad"` entry; iPhone (and every other device) keeps using the universal entry, and code keeps the single `Image(.onboardingHero)` symbol. Combines with localization by appending the locale **after** the idiom:
+
+```
+  onboarding-hero-tr         <- Turkish (all devices)
+  onboarding-hero-ipad-tr    <- iPad + Turkish
+```
+
+Rules and gotchas:
+
+- The suffix order is `<base><sep><idiom><sep><locale>`: `hero-ipad-tr`, never `hero-tr-ipad` (the latter fails the export as an orphan of `hero-tr`).
+- The same rules as locales apply: every variant needs its base in the same folder, matching is case-insensitive, and configured suffixes are reserved.
+- iPad raster variants export at @1x/@2x only — iPads have no 3x displays, and actool silently drops `ipad` 3x slots from the compiled catalog.
+- An idiom-only imageset is intentionally **not** marked `localizable` (that property drives the Xcode Localization / .xcloc workflow); it shows up in Xcode with per-device slots instead.
+- A family is exported as SVG only when the base **and** all variants (locale and idiom alike) have vector representations; otherwise the whole family falls back to PNG.
+- An iPad+locale variant does not require an iPad base: `hero` + `hero-ipad-tr` is valid — iPads in other languages fall back to the universal entry.
 
 ### Asset naming
 

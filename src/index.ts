@@ -67,8 +67,9 @@ Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyO
     assetGroups = assetGroups.filter((group) => group.brandId === brand.id)
   }
 
-  // Group assets into families (a base plus its localized variants, when
-  // assetLocales is configured) — naming problems fail here, before any rendering.
+  // Group assets into families (a base plus its locale / device idiom variants,
+  // when assetLocales or assetIdioms is configured) — naming problems fail here,
+  // before any rendering.
   // The group map lets variants pair with the base in their own folder, so
   // same-named bases in different folders stay independent.
   const groupKeyByAssetId = new Map<string, string>()
@@ -82,7 +83,7 @@ Pulsar.export(async (sdk: Supernova, context: PulsarContext): Promise<Array<AnyO
 
   // Route each family to the representation that fits it best. A family is only a
   // vector candidate when every member has an SVG representation, so a base and
-  // its localized variants always share one imageset format. Assets under a
+  // its variants always share one imageset format. Assets under a
   // configured raster path (e.g. "Images") are photos / app artwork whose Figma
   // export settings are 1x/2x/3x PNG - Supernova may still hold an SVG wrapper
   // for them, so families are re-routed after the SVG render resolves their groups.
